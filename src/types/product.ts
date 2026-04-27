@@ -3,6 +3,9 @@ export interface Product {
   sku: string;
   name: string;
   image: string;
+  /** All images (primary + gallery). First entry mirrors `image`. */
+  images?: string[];
+  description?: string;
   diamondCaratOptions: number[];
   selectedCarat: number;
   goldWt18k: number;
@@ -13,7 +16,11 @@ export interface Product {
   price: number;
   subCategory: SubCategory;
   size: number;
+  gender?: Gender;
+  isActive?: boolean;
 }
+
+export type Gender = "WOMEN" | "MEN" | "UNISEX";
 
 export type SubCategory =
   | "ALL"

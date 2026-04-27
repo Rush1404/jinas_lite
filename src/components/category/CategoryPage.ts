@@ -1,20 +1,17 @@
 // ─── Category Page ──────────────────────────────────────────────────────────
-// Full-bleed grid of products for a single sub-category (Rings, Earrings, etc).
-// Visual language matches the editorial landing page:
-//   - Sticky filter bar with monospace labels + product count
-//   - 4-column edge-to-edge grid (no gutter)
-//   - "ADD +" button overlay on hover
-//   - One promotional tile slotted into the grid
+// Shows a grid of products filtered by EITHER:
+//   - sub-category (Rings, Earrings, Bracelets, Pendants), or
+//   - gender (Women, Men, Unisex)
 //
-// Uses the same Product data shape as the existing catalog, filtered by
-// subCategory. Clicking a card navigates to #/product/{sku}.
+// Visual language matches the editorial landing page.
 // ────────────────────────────────────────────────────────────────────────────
 
-import type { Product, SubCategory } from "../../types/product";
+import type { Product, SubCategory, Gender } from "../../types/product";
 import { formatCurrency } from "../../utils/filters";
-import { routes, categoryLabel } from "../../utils/router";
+import { routes, categoryLabel, genderLabel } from "../../utils/router";
+import { cartStore } from "../../lib/cartStore.ts";
+import { productToCartItem } from "../../types/cart.ts";
 
-// Promotional tile config per category — easy for Jina to update later.
 interface PromoTile {
   headline: string;
   sublabel: string;
@@ -27,37 +24,61 @@ const PROMO_BY_CATEGORY: Record<SubCategory, PromoTile> = {
   RING: {
     headline: "Stack them up.",
     sublabel: "Three rings, one hand.",
-    cta: "The Stacking Edit",
-    href: "#/shop",
+    cta: "Shop rings",
+    href: routes.category("RING"),
     accent: "gold",
   },
   EARRING: {
-    headline: "Shop 25% off.",
-    sublabel: "Spend $150 or more.",
-    cta: "Shop now",
-    href: "#/shop",
+    headline: "Daily wear.",
+    sublabel: "Studs to statements.",
+    cta: "Shop earrings",
+    href: routes.category("EARRING"),
     accent: "gold",
   },
   LOOSE_BRACELET: {
     headline: "The Eternity edit.",
     sublabel: "Made to layer.",
     cta: "Explore",
-    href: "#/shop",
+    href: routes.category("LOOSE_BRACELET"),
     accent: "moss",
   },
   PENDANT: {
     headline: "Daily delicates.",
     sublabel: "Worn forever.",
     cta: "Shop pendants",
-    href: "#/shop",
+    href: routes.category("PENDANT"),
     accent: "bone",
   },
   ALL: {
     headline: "View everything.",
     sublabel: "One hundred pieces.",
     cta: "Shop all",
-    href: "#/shop",
+    href: routes.landing(),
     accent: "gold",
+  },
+};
+
+const PROMO_BY_GENDER: Record<Gender, PromoTile> = {
+  WOMEN: {
+    headline: "Built to layer.",
+    sublabel: "Lab-grown diamond, designed for daily.",
+    cta: "Explore",
+    href: routes.gender("WOMEN"),
+    accent: "gold",
+  },
+  MEN: {
+    headline: "Quiet weight.",
+    sublabel: "Solid pieces, no logos.",
+    cta: "Explore",
+    href: routes.gender("MEN"),
+    accent: "moss",
+  },
+  UNISEX: {
+    headline: "For everyone.",
+    sublabel: "Genderless by design.",
+    cta: "Explore",
+    href: routes.gender("UNISEX"),
+    accent: "bone",
   },
 };
 
@@ -95,7 +116,6 @@ function renderCard(product: Product): string {
   `;
 }
 
-// ─── Promotional tile ───────────────────────────────────────────────────────
 function renderPromo(promo: PromoTile): string {
   return `
     <a href="${promo.href}" class="cat-promo-tile cat-promo-${promo.accent}" data-reveal>
@@ -114,7 +134,6 @@ function renderPromo(promo: PromoTile): string {
   `;
 }
 
-// ─── Filter bar (placeholder actions — wires into your real filters later) ──
 function renderFilterBar(productCount: number): string {
   return `
     <div class="cat-filter-bar">
@@ -132,25 +151,57 @@ function renderFilterBar(productCount: number): string {
   `;
 }
 
-// ─── Top-level render ───────────────────────────────────────────────────────
+// ─── Render: by subcategory ─────────────────────────────────────────────────
 export function renderCategoryPage(
   subCategory: SubCategory,
   products: Product[]
 ): string {
-  const filtered = products.filter((p) => p.subCategory === subCategory);
+  const filtered = products.filter(
+    (p) => p.subCategory === subCategory && p.isActive !== false
+  );
   const promo = PROMO_BY_CATEGORY[subCategory];
 
-  // Insert promo tile after the 3rd product (top-right of first row in 4-col grid)
+  return renderGrid({
+    title: categoryLabel(subCategory),
+    breadcrumbCurrent: categoryLabel(subCategory),
+    products: filtered,
+    promo,
+  });
+}
+
+// ─── Render: by gender ──────────────────────────────────────────────────────
+export function renderGenderPage(
+  gender: Gender,
+  products: Product[]
+): string {
+  const filtered = products.filter(
+    (p) => (p.gender ?? "WOMEN") === gender && p.isActive !== false
+  );
+  const promo = PROMO_BY_GENDER[gender];
+
+  return renderGrid({
+    title: genderLabel(gender),
+    breadcrumbCurrent: genderLabel(gender),
+    products: filtered,
+    promo,
+  });
+}
+
+// ─── Shared grid rendering ──────────────────────────────────────────────────
+function renderGrid(opts: {
+  title: string;
+  breadcrumbCurrent: string;
+  products: Product[];
+  promo: PromoTile;
+}): string {
+  const { title, breadcrumbCurrent, products, promo } = opts;
+
   const itemsHtml: string[] = [];
-  filtered.forEach((p, i) => {
+  products.forEach((p, i) => {
     itemsHtml.push(renderCard(p));
     if (i === 2) itemsHtml.push(renderPromo(promo));
   });
-
-  // If there are fewer than 3 products, append the promo at the end
-  if (filtered.length <= 2) {
-    itemsHtml.push(renderPromo(promo));
-  }
+  if (products.length <= 2) itemsHtml.push(renderPromo(promo));
 
   return `
     <section class="category-page">
@@ -158,60 +209,47 @@ export function renderCategoryPage(
         <nav class="cat-breadcrumb" aria-label="Breadcrumb">
           <a href="${routes.landing()}">Home</a>
           <span class="cat-breadcrumb-sep">/</span>
-          <a href="${routes.shop()}">All Jewelry</a>
-          <span class="cat-breadcrumb-sep">/</span>
-          <span class="cat-breadcrumb-current">${categoryLabel(subCategory)}</span>
+          <span class="cat-breadcrumb-current">${breadcrumbCurrent}</span>
         </nav>
 
         <div class="cat-page-title-row">
           <h1 class="cat-page-title" data-reveal>
-            ${categoryLabel(subCategory)}
+            ${title}
           </h1>
           <p class="cat-page-intro" data-reveal>
-            Lab-grown, built to last — ${filtered.length} ${filtered.length === 1 ? "piece" : "pieces"} in the current edit.
+            Lab-grown, built to last — ${products.length} ${products.length === 1 ? "piece" : "pieces"} in the current edit.
           </p>
         </div>
       </header>
 
-      ${renderFilterBar(filtered.length)}
+      ${renderFilterBar(products.length)}
 
       ${
-        filtered.length === 0
-          ? `<div class="cat-empty">
-              <p>No pieces in this category yet.</p>
-              <a href="${routes.shop()}" class="btn-ghost"><span>View all jewelry</span></a>
-            </div>`
+        products.length === 0
+          ? `<div class="cat-empty"><p>No pieces yet — check back soon.</p></div>`
           : `<div class="cat-grid">${itemsHtml.join("")}</div>`
       }
     </section>
   `;
 }
 
-// ─── Events — quick-add button + filter stubs ───────────────────────────────
-export function initCategoryPageEvents() {
-  // Quick add — stop the anchor navigation so we don't jump to the product page
-  document.querySelectorAll<HTMLButtonElement>("[data-quick-add]").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const sku = btn.dataset.quickAdd;
-      console.log("[quick-add]", sku);
-      // TODO: wire to real cart logic when you have it
-      btn.classList.add("added");
-      const span = btn.querySelector("span");
-      if (span) span.textContent = "Added";
-      setTimeout(() => {
-        btn.classList.remove("added");
-        const s = btn.querySelector("span");
-        if (s) s.textContent = "Add";
-      }, 1500);
-    });
-  });
+// ─── Events ─────────────────────────────────────────────────────────────────
+export function initCategoryPageEvents(allProducts: Product[]) {
+  // Quick-add from category cards
+  document.addEventListener("click", quickAddHandler);
 
-  // Filter triggers — stubs for now, hook into Filters.ts when ready
-  document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      console.log("[filter]", btn.dataset.filter);
-    });
-  });
+  function quickAddHandler(e: Event) {
+    const target = e.target as HTMLElement;
+    const btn = target.closest<HTMLElement>("[data-quick-add]");
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const sku = btn.dataset.quickAdd;
+    if (!sku) return;
+    const product = allProducts.find((p) => p.sku === sku);
+    if (!product) return;
+    cartStore.add(productToCartItem(product));
+    btn.classList.add("added");
+    setTimeout(() => btn.classList.remove("added"), 800);
+  }
 }

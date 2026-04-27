@@ -1,93 +1,28 @@
 // ─── Product Page ───────────────────────────────────────────────────────────
-// Full dedicated page (not a modal) at #/product/{sku}. Structure mirrors
-// Mejuri's PDP aesthetic:
-//   - Left column: large sticky product image with zoom-hint affordance
-//   - Right column: breadcrumb → title → price → material swatches →
-//                   carat options → Add to Bag → description → feature list
+// Full dedicated PDP at #/product/{sku}. Per the project spec, listings have
+// NO customization (no material/carat selectors). Specs are read-only.
 //
-// Keyboard navigation (←/→) and related products section included.
-// Uses the same Product shape you already have in src/types/product.ts.
+// Layout:
+//   - Left:  sticky image
+//   - Right: breadcrumb → title → SKU → price → quantity → Add to Bag
+//            → description → feature bullets → spec table
+//
+// Keyboard arrows navigate between products in the same subcategory.
 // ────────────────────────────────────────────────────────────────────────────
 
 import type { Product } from "../../types/product";
 import { formatCurrency, formatCategory } from "../../utils/filters";
 import { routes } from "../../utils/router";
+import { cartStore } from "../../lib/cartStore.ts";
+import { productToCartItem } from "../../types/cart.ts";
 
 interface PageState {
-  selectedCarat: number | null;
-  selectedMaterial: "18k-gold" | "14k-gold" | "silver-925";
   quantity: number;
 }
 
-// Module-level state — the page re-renders on navigation so this resets naturally.
-const state: PageState = {
-  selectedCarat: null,
-  selectedMaterial: "18k-gold",
-  quantity: 1,
-};
+const state: PageState = { quantity: 1 };
 
-// ─── Material swatch row ────────────────────────────────────────────────────
-function renderMaterialSwatches(): string {
-  const swatches = [
-    { id: "18k-gold", label: "18k Gold Vermeil", className: "swatch-gold-deep" },
-    { id: "14k-gold", label: "14k Gold Vermeil", className: "swatch-gold" },
-    { id: "silver-925", label: "Silver 925", className: "swatch-silver" },
-  ] as const;
-
-  return `
-    <div class="pdp-material-row">
-      <p class="pdp-material-label">${
-        swatches.find((s) => s.id === state.selectedMaterial)?.label ?? ""
-      }</p>
-      <div class="pdp-swatches">
-        ${swatches
-          .map(
-            (s) => `
-              <button
-                class="pdp-swatch ${s.className} ${
-                  s.id === state.selectedMaterial ? "active" : ""
-                }"
-                data-material="${s.id}"
-                data-label="${s.label}"
-                aria-label="Select ${s.label}"
-              ></button>
-            `
-          )
-          .join("")}
-      </div>
-    </div>
-  `;
-}
-
-// ─── Carat options (uses Product.diamondCaratOptions) ───────────────────────
-function renderCaratOptions(product: Product): string {
-  if (!product.diamondCaratOptions?.length) return "";
-
-  return `
-    <div class="pdp-option-section">
-      <p class="pdp-option-label">
-        Diamond Carat
-        <span class="pdp-option-count">(${product.diamondCaratOptions.length} options)</span>
-      </p>
-      <div class="pdp-carat-grid">
-        ${product.diamondCaratOptions
-          .map(
-            (c) => `
-              <button
-                class="pdp-carat-option ${
-                  c === state.selectedCarat ? "active" : ""
-                }"
-                data-carat="${c}"
-              >${c.toFixed(2)} Ct</button>
-            `
-          )
-          .join("")}
-      </div>
-    </div>
-  `;
-}
-
-// ─── Feature bullets (icons + labels, Mejuri-style) ─────────────────────────
+// ─── Feature bullets ────────────────────────────────────────────────────────
 function renderFeatureList(): string {
   const features = [
     {
@@ -124,7 +59,7 @@ function renderFeatureList(): string {
   `;
 }
 
-// ─── Specifications table (uses all the fields Jina actually tracks) ────────
+// ─── Specifications ─────────────────────────────────────────────────────────
 function renderSpecs(product: Product): string {
   return `
     <details class="pdp-spec-details">
@@ -133,6 +68,10 @@ function renderSpecs(product: Product): string {
         <div class="pdp-spec-item">
           <span class="pdp-spec-label">Collection</span>
           <span class="pdp-spec-value">${formatCategory(product.category)}</span>
+        </div>
+        <div class="pdp-spec-item">
+          <span class="pdp-spec-label">Diamond Carat</span>
+          <span class="pdp-spec-value">${product.selectedCarat.toFixed(2)} Ct</span>
         </div>
         <div class="pdp-spec-item">
           <span class="pdp-spec-label">Silver 925 (gm)</span>
@@ -154,16 +93,23 @@ function renderSpecs(product: Product): string {
           <span class="pdp-spec-label">Size</span>
           <span class="pdp-spec-value">${product.size.toFixed(2)} Ct</span>
         </div>
+        <div class="pdp-spec-item">
+          <span class="pdp-spec-label">SKU</span>
+          <span class="pdp-spec-value">${product.sku}</span>
+        </div>
       </div>
     </details>
   `;
 }
 
-// ─── Related products rail ──────────────────────────────────────────────────
+// ─── Related ────────────────────────────────────────────────────────────────
 function renderRelated(currentProduct: Product, allProducts: Product[]): string {
   const related = allProducts
     .filter(
-      (p) => p.id !== currentProduct.id && p.subCategory === currentProduct.subCategory
+      (p) =>
+        p.id !== currentProduct.id &&
+        p.subCategory === currentProduct.subCategory &&
+        p.isActive !== false
     )
     .slice(0, 4);
 
@@ -196,13 +142,13 @@ function renderRelated(currentProduct: Product, allProducts: Product[]): string 
   `;
 }
 
-// ─── Adjacent-product navigation (prev/next within the same subcategory) ───
+// ─── Adjacent navigation ────────────────────────────────────────────────────
 function getAdjacent(
   current: Product,
   allProducts: Product[]
 ): { prev: Product | null; next: Product | null } {
   const siblings = allProducts.filter(
-    (p) => p.subCategory === current.subCategory
+    (p) => p.subCategory === current.subCategory && p.isActive !== false
   );
   const idx = siblings.findIndex((p) => p.id === current.id);
   return {
@@ -216,25 +162,17 @@ export function renderProductPage(
   product: Product,
   allProducts: Product[]
 ): string {
-  // Reset state for the newly-rendered product
-  state.selectedCarat = product.selectedCarat;
-  state.selectedMaterial = "18k-gold";
   state.quantity = 1;
 
   const { prev, next } = getAdjacent(product, allProducts);
 
   return `
     <article class="pdp-page">
-      <!-- Breadcrumb + adjacent nav -->
       <nav class="pdp-breadcrumb-bar" aria-label="Product navigation">
         <div class="pdp-breadcrumb">
           <a href="${routes.landing()}">Home</a>
           <span class="pdp-breadcrumb-sep">/</span>
-          <a href="${routes.shop()}">All Jewelry</a>
-          <span class="pdp-breadcrumb-sep">/</span>
-          <a href="${routes.category(product.subCategory)}">${
-    formatCategory(product.subCategory)
-  }</a>
+          <a href="${routes.category(product.subCategory)}">${formatCategory(product.subCategory)}</a>
           <span class="pdp-breadcrumb-sep">/</span>
           <span class="pdp-breadcrumb-current">${product.name}</span>
         </div>
@@ -261,34 +199,18 @@ export function renderProductPage(
       </nav>
 
       <div class="pdp-layout">
-        <!-- LEFT: sticky image column -->
+        <!-- LEFT: image -->
         <div class="pdp-image-col">
           <div class="pdp-image-wrap" data-product-cursor>
-            <button class="pdp-zoom-hint" aria-label="Zoom image">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25">
-                <path d="M12 5v14M5 12h14" stroke-linecap="round"/>
-              </svg>
-            </button>
             <img src="${product.image}" alt="${product.name}" id="pdp-main-image" />
-          </div>
-          <!-- Secondary image, if available. Using the same image for now since
-               Product only has one field — add a gallery array when ready. -->
-          <div class="pdp-image-wrap pdp-image-secondary">
-            <img src="${product.image}" alt="${product.name} — alt view" loading="lazy" />
           </div>
         </div>
 
-        <!-- RIGHT: info column -->
+        <!-- RIGHT: info -->
         <div class="pdp-info-col">
           <div class="pdp-info-sticky">
             <div class="pdp-title-row">
               <h1 class="pdp-title">${product.name}</h1>
-              <div class="pdp-rating" aria-label="Rated 4.8 out of 5">
-                <span>4.8</span>
-                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
-                  <path d="M12 2l2.9 6.9 7.1.6-5.4 4.7 1.6 7L12 17.3 5.8 21.2l1.6-7L2 9.5l7.1-.6L12 2Z"/>
-                </svg>
-              </div>
             </div>
 
             <p class="pdp-sku">SKU: ${product.sku}</p>
@@ -297,9 +219,6 @@ export function renderProductPage(
               <span class="pdp-price">${formatCurrency(product.price)}</span>
               <span class="pdp-price-note">In stock · Ships within 3 days</span>
             </div>
-
-            ${renderMaterialSwatches()}
-            ${renderCaratOptions(product)}
 
             <div class="pdp-quantity-row">
               <span class="pdp-option-label">Quantity</span>
@@ -315,20 +234,13 @@ export function renderProductPage(
                 <span>Add to Bag</span>
                 <span class="pdp-add-price">${formatCurrency(product.price * state.quantity)}</span>
               </button>
-              <button class="pdp-wishlist" aria-label="Add to wishlist">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25">
-                  <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z" stroke-linejoin="round"/>
-                </svg>
-              </button>
             </div>
 
             <p class="pdp-description">
-              A modern take on a daily classic — designed to be worn alone or
-              layered. Lab-grown diamonds set in recycled ${
-                (state.selectedMaterial as string) === "silver-925"
-                  ? "silver 925"
-                  : "gold vermeil"
-              }, hand-finished in small batches.
+              ${
+                product.description ||
+                `A modern take on a daily classic — designed to be worn alone or layered. Lab-grown diamonds set in recycled metal, hand-finished in small batches.`
+              }
             </p>
 
             ${renderFeatureList()}
@@ -342,37 +254,9 @@ export function renderProductPage(
   `;
 }
 
-// ─── Events ─────────────────────────────────────────────────────────────────
-
 let keyHandler: ((e: KeyboardEvent) => void) | null = null;
 
 export function initProductPageEvents(product: Product, allProducts: Product[]) {
-  // Material swatches
-  document.querySelectorAll<HTMLButtonElement>("[data-material]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const value = btn.dataset.material as PageState["selectedMaterial"];
-      state.selectedMaterial = value;
-      // Update UI — clear active on all, set on this one
-      document
-        .querySelectorAll(".pdp-swatch")
-        .forEach((s) => s.classList.remove("active"));
-      btn.classList.add("active");
-      const label = document.querySelector(".pdp-material-label");
-      if (label) label.textContent = btn.dataset.label ?? "";
-    });
-  });
-
-  // Carat options
-  document.querySelectorAll<HTMLButtonElement>("[data-carat]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.selectedCarat = parseFloat(btn.dataset.carat!);
-      document
-        .querySelectorAll(".pdp-carat-option")
-        .forEach((o) => o.classList.remove("active"));
-      btn.classList.add("active");
-    });
-  });
-
   // Quantity controls
   const qtyValue = document.getElementById("pdp-qty-value");
   const updateAddBtnPrice = () => {
@@ -381,28 +265,24 @@ export function initProductPageEvents(product: Product, allProducts: Product[]) 
       priceEl.textContent = formatCurrency(product.price * state.quantity);
     }
   };
+
   document.getElementById("pdp-qty-minus")?.addEventListener("click", () => {
     if (state.quantity > 1) {
       state.quantity--;
-      if (qtyValue) qtyValue.textContent = state.quantity.toString();
+      if (qtyValue) qtyValue.textContent = String(state.quantity);
       updateAddBtnPrice();
     }
   });
   document.getElementById("pdp-qty-plus")?.addEventListener("click", () => {
     state.quantity++;
-    if (qtyValue) qtyValue.textContent = state.quantity.toString();
+    if (qtyValue) qtyValue.textContent = String(state.quantity);
     updateAddBtnPrice();
   });
 
-  // Add to bag
+  // Add to bag — wires to real cartStore
   document.getElementById("pdp-add-to-bag")?.addEventListener("click", (e) => {
     const btn = e.currentTarget as HTMLButtonElement;
-    console.log("[add-to-bag]", {
-      sku: product.sku,
-      material: state.selectedMaterial,
-      carat: state.selectedCarat,
-      quantity: state.quantity,
-    });
+    cartStore.add(productToCartItem(product, state.quantity));
     btn.classList.add("added");
     const labelSpan = btn.querySelector("span:first-child");
     if (labelSpan) labelSpan.textContent = "Added to bag";
@@ -410,12 +290,11 @@ export function initProductPageEvents(product: Product, allProducts: Product[]) 
       btn.classList.remove("added");
       const s = btn.querySelector("span:first-child");
       if (s) s.textContent = "Add to Bag";
-    }, 1800);
+    }, 1500);
   });
 
-  // Keyboard navigation between products (← / →)
+  // Keyboard navigation
   keyHandler = (e: KeyboardEvent) => {
-    // Don't hijack arrows when the user is typing in an input/textarea
     const tag = (e.target as HTMLElement)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA") return;
 

@@ -124,11 +124,11 @@ body.landing-mode .category-page {
 
 /* ── Grid ───────────────────────────────────────────────────────────────── */
 .cat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1px;
-  background: var(--line);
-  border-bottom: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border-bottom: 1px solid var(--line);
 }
 
 /* ── Product card ───────────────────────────────────────────────────────── */

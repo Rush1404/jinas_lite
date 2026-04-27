@@ -1,6 +1,6 @@
 // ─── Featured Products ──────────────────────────────────────────────────────
 // Dark-moss section with an asymmetric product grid. Each card links to
-// #/product/{sku} — SKUs come from data/landing.ts and map to mockProducts.
+// #/product/{sku} — SKUs come from data/landing.ts and map to products.
 // ────────────────────────────────────────────────────────────────────────────
 
 import { landingProducts, type LandingProduct } from "../../data/landing";
@@ -59,7 +59,7 @@ export function renderFeaturedProducts(): string {
       </div>
 
       <div class="featured-footer" data-reveal>
-        <a href="${routes.shop()}" class="btn-primary">
+        <a href="${routes.gender("WOMEN")}" class="btn-primary">
           <span>View all jewelry</span>
           ${arrowSvg}
         </a>
