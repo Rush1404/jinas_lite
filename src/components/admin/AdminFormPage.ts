@@ -1,6 +1,6 @@
 // ─── Admin Form Page ────────────────────────────────────────────────────────
 // Single form used for both creating and editing a product. Handles:
-//   - Image upload (Supabase storage, or object URL in dev)
+//   - MULTI-IMAGE gallery editor (upload, paste URL, reorder, remove)
 //   - All specification fields (gold weights, diamond weight, silver, size)
 //   - Price, SKU, name, description
 //   - Sub-category, category (collection), gender
@@ -32,10 +32,12 @@ const GENDERS: Gender[] = ["WOMEN", "MEN", "UNISEX"];
 
 let currentProduct: Product | null = null;
 
+/** Local gallery state. The first entry is always the primary image. */
+let galleryImages: string[] = [];
+
 // ─── Render ─────────────────────────────────────────────────────────────────
 export function renderAdminFormPage(mode: "new" | "edit", sku?: string): string {
   if (!isAdminUnlocked()) {
-    // Bounce back to gated list. The list page will render the gate.
     setTimeout(() => navigate(routes.admin()), 0);
     return `<section class="admin-page"><p class="admin-loading">Redirecting…</p></section>`;
   }
@@ -71,7 +73,15 @@ export async function initAdminFormPage(mode: "new" | "edit", sku?: string) {
     currentProduct = null;
   }
 
+  // Seed the gallery from the existing product (or empty for new).
+  galleryImages = currentProduct?.images?.length
+    ? [...currentProduct.images]
+    : currentProduct?.image
+    ? [currentProduct.image]
+    : [];
+
   mount.innerHTML = renderForm(currentProduct);
+  rerenderGalleryStrip();
   wireForm(mode);
 }
 
@@ -83,33 +93,18 @@ function renderForm(product: Product | null): string {
   return `
     <form class="admin-form" id="product-form" novalidate>
 
-      <div class="admin-form-grid">
-        <!-- ── Image column ─────────────────────────────────────────── -->
-        <div class="admin-form-col">
-          <label class="admin-label">Primary image</label>
-          <div class="admin-image-preview" id="image-preview">
-            ${
-              product?.image
-                ? `<img src="${product.image}" alt="" />`
-                : `<span class="admin-image-placeholder">No image yet</span>`
-            }
-          </div>
-          <input type="file" id="image-file" accept="image/*" class="admin-file-input" />
-          <label for="image-file" class="btn-ghost admin-upload-btn">
-            <span>Upload image</span>
-          </label>
-          <p class="admin-hint">Or paste a URL below if hosted elsewhere.</p>
-          <input
-            type="url"
-            name="image"
-            id="image-url"
-            placeholder="https://…"
-            value="${v("image")}"
-            class="admin-input"
-          />
+      <!-- ── Image gallery (full width) ──────────────────────────────── -->
+      <div class="admin-gallery-section">
+        <div class="admin-gallery-header">
+          <label class="admin-label">Images</label>
+          <p class="admin-hint">First image is the primary. It's what shows on cards. Drag-free reorder: use the "Make primary" button on any thumbnail.</p>
         </div>
+        <div class="admin-gallery-strip" id="gallery-strip"></div>
+        <p class="admin-gallery-error auth-error" id="gallery-error" hidden></p>
+      </div>
 
-        <!-- ── Fields column ────────────────────────────────────────── -->
+      <div class="admin-form-grid admin-form-grid-single">
+        <!-- ── Fields column (full width now) ──────────────────────── -->
         <div class="admin-form-col admin-form-col-wide">
 
           <div class="admin-row-2">
@@ -141,7 +136,7 @@ function renderForm(product: Product | null): string {
               <span class="admin-label">Sub-category *</span>
               <select name="subCategory" required class="admin-input">
                 ${SUB_CATEGORIES.map(
-                  (s) => `<option value="${s}" ${v("subCategory") === s ? "selected" : ""}>${s}</option>`
+                  (s) => `<option value="${s}" ${v("subCategory") === s ? "selected" : ""}>${s.replace("_", " ")}</option>`
                 ).join("")}
               </select>
             </label>
@@ -157,7 +152,7 @@ function renderForm(product: Product | null): string {
               <span class="admin-label">For *</span>
               <select name="gender" required class="admin-input">
                 ${GENDERS.map(
-                  (g) => `<option value="${g}" ${(v("gender") || "WOMEN") === g ? "selected" : ""}>${g}</option>`
+                  (g) => `<option value="${g}" ${v("gender") === g ? "selected" : ""}>${g}</option>`
                 ).join("")}
               </select>
             </label>
@@ -167,43 +162,43 @@ function renderForm(product: Product | null): string {
 
           <div class="admin-row-3">
             <label class="admin-field">
-              <span class="admin-label">Diamond Wt (ct)</span>
-              <input type="number" name="diamondWt" step="0.01" min="0"
-                value="${v("diamondWt", 0)}" class="admin-input" />
-            </label>
-            <label class="admin-field">
-              <span class="admin-label">Default carat</span>
-              <input type="number" name="selectedCarat" step="0.01" min="0"
+              <span class="admin-label">Selected carat</span>
+              <input type="number" name="selectedCarat" min="0" step="0.01"
                 value="${v("selectedCarat", 0)}" class="admin-input" />
             </label>
             <label class="admin-field">
+              <span class="admin-label">Diamond wt (ct)</span>
+              <input type="number" name="diamondWt" min="0" step="0.01"
+                value="${v("diamondWt", 0)}" class="admin-input" />
+            </label>
+            <label class="admin-field">
               <span class="admin-label">Size</span>
-              <input type="number" name="size" step="0.01" min="0"
+              <input type="number" name="size" min="0" step="0.01"
                 value="${v("size", 0)}" class="admin-input" />
             </label>
           </div>
 
           <div class="admin-row-3">
             <label class="admin-field">
-              <span class="admin-label">Gold Wt 18k (gm)</span>
-              <input type="number" name="goldWt18k" step="0.001" min="0"
+              <span class="admin-label">Gold 18k (gm)</span>
+              <input type="number" name="goldWt18k" min="0" step="0.01"
                 value="${v("goldWt18k", 0)}" class="admin-input" />
             </label>
             <label class="admin-field">
-              <span class="admin-label">Gold Wt 14k (gm)</span>
-              <input type="number" name="goldWt14k" step="0.001" min="0"
+              <span class="admin-label">Gold 14k (gm)</span>
+              <input type="number" name="goldWt14k" min="0" step="0.01"
                 value="${v("goldWt14k", 0)}" class="admin-input" />
             </label>
             <label class="admin-field">
               <span class="admin-label">Silver 925 (gm)</span>
-              <input type="number" name="silver925" step="0.001" min="0"
+              <input type="number" name="silver925" min="0" step="0.01"
                 value="${v("silver925", 0)}" class="admin-input" />
             </label>
           </div>
 
           <label class="admin-field admin-checkbox-field">
             <input type="checkbox" name="isActive"
-              ${product?.isActive === false ? "" : "checked"} />
+              ${product ? (product.isActive === false ? "" : "checked") : "checked"} />
             <span class="admin-label">Visible on storefront</span>
           </label>
 
@@ -216,48 +211,148 @@ function renderForm(product: Product | null): string {
         </div>
       </div>
     </form>
+
+    <!-- Hidden file inputs for multi-image upload -->
+    <input type="file" id="gallery-file-input" accept="image/*" multiple class="admin-file-input" />
   `;
+}
+
+// ─── Gallery strip rendering & wiring ───────────────────────────────────────
+
+function rerenderGalleryStrip() {
+  const strip = document.getElementById("gallery-strip");
+  if (!strip) return;
+
+  const tiles = galleryImages
+    .map(
+      (url, i) => `
+        <div class="admin-gallery-tile ${i === 0 ? "is-primary" : ""}" data-index="${i}">
+          <div class="admin-gallery-thumb">
+            <img src="${url}" alt="" onerror="this.outerHTML='<span class=admin-gallery-broken>Broken</span>'" />
+            ${i === 0 ? `<span class="admin-gallery-badge">Primary</span>` : ""}
+          </div>
+          <div class="admin-gallery-tile-actions">
+            ${
+              i === 0
+                ? ""
+                : `<button type="button" class="admin-gallery-action" data-make-primary="${i}">Make primary</button>`
+            }
+            <button type="button" class="admin-gallery-action admin-gallery-action-danger" data-remove="${i}">Remove</button>
+          </div>
+        </div>
+      `
+    )
+    .join("");
+
+  strip.innerHTML = `
+    ${tiles}
+    <div class="admin-gallery-add">
+      <button type="button" class="admin-gallery-add-btn" id="gallery-upload-trigger">
+        <span class="admin-gallery-add-icon">+</span>
+        <span>Upload image${galleryImages.length === 0 ? "s" : ""}</span>
+      </button>
+      <div class="admin-gallery-url-row">
+        <input
+          type="url"
+          id="gallery-url-input"
+          placeholder="…or paste image URL"
+          class="admin-input admin-gallery-url-input"
+        />
+        <button type="button" class="admin-gallery-url-add" id="gallery-url-add-btn">Add</button>
+      </div>
+    </div>
+  `;
+
+  // Wire tile actions
+  strip.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.remove);
+      if (Number.isNaN(idx)) return;
+      galleryImages.splice(idx, 1);
+      rerenderGalleryStrip();
+    });
+  });
+
+  strip.querySelectorAll<HTMLButtonElement>("[data-make-primary]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.makePrimary);
+      if (Number.isNaN(idx) || idx === 0) return;
+      const [picked] = galleryImages.splice(idx, 1);
+      galleryImages.unshift(picked);
+      rerenderGalleryStrip();
+    });
+  });
+
+  // Upload trigger
+  document.getElementById("gallery-upload-trigger")?.addEventListener("click", () => {
+    document.getElementById("gallery-file-input")?.click();
+  });
+
+  // Paste-URL "Add" button
+  const urlInput = document.getElementById("gallery-url-input") as HTMLInputElement | null;
+  const urlAddBtn = document.getElementById("gallery-url-add-btn");
+  const addUrl = () => {
+    if (!urlInput) return;
+    const url = urlInput.value.trim();
+    if (!url) return;
+    if (galleryImages.includes(url)) {
+      urlInput.value = "";
+      return;
+    }
+    galleryImages.push(url);
+    urlInput.value = "";
+    rerenderGalleryStrip();
+  };
+  urlAddBtn?.addEventListener("click", addUrl);
+  urlInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addUrl();
+    }
+  });
 }
 
 // ─── Form wiring ────────────────────────────────────────────────────────────
 function wireForm(mode: "new" | "edit") {
   const form = document.getElementById("product-form") as HTMLFormElement | null;
-  const fileInput = document.getElementById("image-file") as HTMLInputElement | null;
-  const urlInput = document.getElementById("image-url") as HTMLInputElement | null;
-  const preview = document.getElementById("image-preview") as HTMLDivElement | null;
+  const fileInput = document.getElementById("gallery-file-input") as HTMLInputElement | null;
   const errorEl = document.getElementById("form-error");
+  const galleryErrEl = document.getElementById("gallery-error");
   const submitLabel = document.querySelector("[data-form-submit]") as HTMLElement | null;
   if (!form || !errorEl || !submitLabel) return;
 
-  // ── Image upload
+  // ── Multi-image upload
   fileInput?.addEventListener("change", async () => {
-    const file = fileInput.files?.[0];
-    if (!file || !preview || !urlInput) return;
+    const files = fileInput.files ? Array.from(fileInput.files) : [];
+    if (files.length === 0) return;
 
-    // Use the SKU input as the upload key; fall back to "TEMP" if empty.
+    // SKU is needed to namespace uploads; fall back to TEMP if not set yet.
     const skuField = form.querySelector<HTMLInputElement>('input[name="sku"]');
     const skuVal = skuField?.value.trim() || "TEMP";
 
-    submitLabel.textContent = "Uploading…";
-    try {
-      const url = await uploadProductImage(file, skuVal);
-      urlInput.value = url;
-      preview.innerHTML = `<img src="${url}" alt="" />`;
-    } catch (err: any) {
-      errorEl.textContent = "Upload failed: " + err.message;
-      errorEl.hidden = false;
-    } finally {
-      submitLabel.textContent = "Save product";
-    }
-  });
+    if (galleryErrEl) galleryErrEl.hidden = true;
+    submitLabel.textContent = `Uploading 0/${files.length}…`;
 
-  // Live preview when pasting a URL
-  urlInput?.addEventListener("input", () => {
-    if (!preview) return;
-    const url = urlInput.value.trim();
-    preview.innerHTML = url
-      ? `<img src="${url}" alt="" onerror="this.outerHTML='<span class=admin-image-placeholder>Image failed to load</span>'" />`
-      : `<span class="admin-image-placeholder">No image yet</span>`;
+    let done = 0;
+    for (const file of files) {
+      try {
+        const url = await uploadProductImage(file, skuVal, galleryImages.length);
+        galleryImages.push(url);
+        done++;
+        submitLabel.textContent = `Uploading ${done}/${files.length}…`;
+        rerenderGalleryStrip();
+      } catch (err: any) {
+        if (galleryErrEl) {
+          galleryErrEl.textContent = `Upload failed: ${err?.message ?? err}`;
+          galleryErrEl.hidden = false;
+        }
+        break;
+      }
+    }
+
+    submitLabel.textContent = "Save product";
+    // Reset the input so re-selecting the same file fires `change` again
+    fileInput.value = "";
   });
 
   // ── Submit
@@ -270,7 +365,8 @@ function wireForm(mode: "new" | "edit") {
       sku: String(data.get("sku") || "").trim().toUpperCase(),
       name: String(data.get("name") || "").trim(),
       description: String(data.get("description") || "").trim(),
-      image: String(data.get("image") || "").trim(),
+      image: galleryImages[0] ?? "",
+      images: [...galleryImages],
       price: parseFloat(String(data.get("price") || 0)),
       goldWt18k: parseFloat(String(data.get("goldWt18k") || 0)),
       goldWt14k: parseFloat(String(data.get("goldWt14k") || 0)),
@@ -284,8 +380,13 @@ function wireForm(mode: "new" | "edit") {
       isActive: data.get("isActive") === "on",
     };
 
-    if (!input.sku || !input.name || !input.image) {
-      errorEl.textContent = "SKU, name, and image are required.";
+    if (!input.sku || !input.name) {
+      errorEl.textContent = "SKU and name are required.";
+      errorEl.hidden = false;
+      return;
+    }
+    if (galleryImages.length === 0) {
+      errorEl.textContent = "Add at least one image.";
       errorEl.hidden = false;
       return;
     }

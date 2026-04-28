@@ -7,13 +7,14 @@
 import { supabase } from "../lib/supabase";
 import { config } from "../lib/config";
 import { mockProducts } from "../data/products";
+import { getImageUrl } from "../utils/images";
 import type { Product, SubCategory, Category, Gender } from "../types/product";
 
 export interface ProductInput {
   sku: string;
   name: string;
   description?: string;
-  image: string;        // primary image URL
+  image: string;        // primary image URL (kept in sync with images[0])
   images?: string[];    // gallery URLs (first is primary)
   price: number;
   goldWt18k: number;
@@ -31,6 +32,31 @@ export interface ProductInput {
 const isSupabaseConfigured = () =>
   Boolean(config.supabase.url) && Boolean(config.supabase.anonKey);
 
+// ─── Bulk load galleries ────────────────────────────────────────────────────
+async function loadGalleries(productIds: string[]): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+  if (productIds.length === 0) return map;
+
+  const { data, error } = await supabase
+    .from("product_images")
+    .select("product_id, image_path, is_primary, sort_order")
+    .in("product_id", productIds)
+    .order("is_primary", { ascending: false })
+    .order("sort_order", { ascending: true });
+
+  if (error) {
+    console.error("loadGalleries:", error);
+    return map;
+  }
+
+  data?.forEach((r: any) => {
+    const existing = map.get(r.product_id) ?? [];
+    existing.push(getImageUrl(r.image_path));
+    map.set(r.product_id, existing);
+  });
+  return map;
+}
+
 // ─── List ───────────────────────────────────────────────────────────────────
 export async function listAllProducts(): Promise<Product[]> {
   if (!isSupabaseConfigured()) {
@@ -47,7 +73,9 @@ export async function listAllProducts(): Promise<Product[]> {
     return [];
   }
 
-  return (data ?? []).map(rowToProduct);
+  const rows = data ?? [];
+  // Admin list view doesn't need full galleries — just primary thumb.
+  return rows.map((r) => rowToProduct(r, []));
 }
 
 // ─── Get single ─────────────────────────────────────────────────────────────
@@ -63,19 +91,25 @@ export async function getProductBySku(sku: string): Promise<Product | null> {
     .maybeSingle();
 
   if (error || !data) return null;
-  return rowToProduct(data);
+
+  // Load this product's gallery so the edit form can prefill it.
+  const galleryMap = await loadGalleries([data.id]);
+  return rowToProduct(data, galleryMap.get(data.id) || []);
 }
 
 // ─── Create ─────────────────────────────────────────────────────────────────
 export async function createProduct(input: ProductInput): Promise<Product> {
+  // Normalize images: ensure images[0] === image
+  const images = normalizeImages(input);
+
   if (!isSupabaseConfigured()) {
     const newProduct: Product = {
       id: String(Date.now()),
       sku: input.sku,
       name: input.name,
       description: input.description ?? "",
-      image: input.image,
-      images: input.images ?? [input.image],
+      image: images[0],
+      images,
       diamondCaratOptions: [input.selectedCarat],
       selectedCarat: input.selectedCarat,
       goldWt18k: input.goldWt18k,
@@ -99,7 +133,7 @@ export async function createProduct(input: ProductInput): Promise<Product> {
       sku: input.sku.toUpperCase(),
       name: input.name,
       description: input.description ?? "",
-      image_path: input.image,
+      image_path: images[0],
       default_carat: input.selectedCarat,
       gold_wt_18k: input.goldWt18k,
       gold_wt_14k: input.goldWt14k,
@@ -117,22 +151,26 @@ export async function createProduct(input: ProductInput): Promise<Product> {
 
   if (error || !data) throw new Error(error?.message || "Insert failed");
 
-  // Save gallery images if any
-  if (input.images && input.images.length > 0) {
-    const imageRows = input.images.map((url, i) => ({
+  // Save full gallery (always — even if just one image, so the gallery
+  // table stays the source of truth for the storefront).
+  if (images.length > 0) {
+    const imageRows = images.map((url, i) => ({
       product_id: data.id,
       image_path: url,
       is_primary: i === 0,
       sort_order: i,
     }));
-    await supabase.from("product_images").insert(imageRows);
+    const { error: imgErr } = await supabase.from("product_images").insert(imageRows);
+    if (imgErr) console.error("Saving gallery failed:", imgErr);
   }
 
-  return rowToProduct(data);
+  return rowToProduct(data, images);
 }
 
 // ─── Update ─────────────────────────────────────────────────────────────────
 export async function updateProduct(id: string, input: ProductInput): Promise<Product> {
+  const images = normalizeImages(input);
+
   if (!isSupabaseConfigured()) {
     const idx = mockProducts.findIndex((p) => p.id === id);
     if (idx === -1) throw new Error("Product not found");
@@ -141,8 +179,8 @@ export async function updateProduct(id: string, input: ProductInput): Promise<Pr
       sku: input.sku,
       name: input.name,
       description: input.description ?? "",
-      image: input.image,
-      images: input.images ?? [input.image],
+      image: images[0],
+      images,
       selectedCarat: input.selectedCarat,
       goldWt18k: input.goldWt18k,
       goldWt14k: input.goldWt14k,
@@ -164,7 +202,7 @@ export async function updateProduct(id: string, input: ProductInput): Promise<Pr
       sku: input.sku.toUpperCase(),
       name: input.name,
       description: input.description ?? "",
-      image_path: input.image,
+      image_path: images[0],
       default_carat: input.selectedCarat,
       gold_wt_18k: input.goldWt18k,
       gold_wt_14k: input.goldWt14k,
@@ -184,21 +222,21 @@ export async function updateProduct(id: string, input: ProductInput): Promise<Pr
 
   if (error || !data) throw new Error(error?.message || "Update failed");
 
-  // Replace gallery
-  if (input.images) {
-    await supabase.from("product_images").delete().eq("product_id", id);
-    if (input.images.length > 0) {
-      const imageRows = input.images.map((url, i) => ({
-        product_id: id,
-        image_path: url,
-        is_primary: i === 0,
-        sort_order: i,
-      }));
-      await supabase.from("product_images").insert(imageRows);
-    }
+  // Replace gallery wholesale: delete all, then re-insert in order.
+  // Simple and correct; the gallery is small.
+  await supabase.from("product_images").delete().eq("product_id", id);
+  if (images.length > 0) {
+    const imageRows = images.map((url, i) => ({
+      product_id: id,
+      image_path: url,
+      is_primary: i === 0,
+      sort_order: i,
+    }));
+    const { error: imgErr } = await supabase.from("product_images").insert(imageRows);
+    if (imgErr) console.error("Saving gallery failed:", imgErr);
   }
 
-  return rowToProduct(data);
+  return rowToProduct(data, images);
 }
 
 // ─── Delete ─────────────────────────────────────────────────────────────────
@@ -219,14 +257,23 @@ export async function deleteProduct(id: string): Promise<void> {
 }
 
 // ─── Image upload to Supabase Storage ───────────────────────────────────────
-export async function uploadProductImage(file: File, sku: string): Promise<string> {
+//
+// Returns the public URL of the uploaded file. The `index` parameter
+// disambiguates filenames when uploading multiple images for the same SKU
+// in quick succession (Date.now() alone can collide).
+// ─────────────────────────────────────────────────────────────────────────────
+export async function uploadProductImage(
+  file: File,
+  sku: string,
+  index: number = 0
+): Promise<string> {
   if (!isSupabaseConfigured()) {
     // Dev-mode: create a local object URL so the preview works.
     return URL.createObjectURL(file);
   }
 
   const ext = file.name.split(".").pop() || "jpg";
-  const filename = `${sku.toUpperCase()}-${Date.now()}.${ext}`;
+  const filename = `${sku.toUpperCase()}-${Date.now()}-${index}.${ext}`;
   const path = `products/${filename}`;
 
   const { error } = await supabase.storage
@@ -240,13 +287,47 @@ export async function uploadProductImage(file: File, sku: string): Promise<strin
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-function rowToProduct(row: any): Product {
+
+/**
+ * Make sure we always have at least one image, that images[0] === image,
+ * and that there are no empty entries or duplicates.
+ */
+function normalizeImages(input: ProductInput): string[] {
+  const raw = (input.images && input.images.length > 0)
+    ? [...input.images]
+    : (input.image ? [input.image] : []);
+
+  // If a primary `image` is set but isn't already first in the gallery,
+  // hoist it to the front.
+  if (input.image && raw[0] !== input.image) {
+    const without = raw.filter((u) => u !== input.image);
+    raw.length = 0;
+    raw.push(input.image, ...without);
+  }
+
+  // Drop empties and dedupe while preserving order.
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const url of raw) {
+    const trimmed = (url || "").trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+function rowToProduct(row: any, gallery: string[] = []): Product {
+  const primary = getImageUrl(row.image_path);
+  const images = gallery.length > 0 ? gallery : [primary];
+
   return {
     id: row.id,
     sku: row.sku,
     name: row.name,
     description: row.description ?? "",
-    image: row.image_path,
+    image: images[0] ?? primary,
+    images,
     diamondCaratOptions: [row.default_carat],
     selectedCarat: row.default_carat,
     goldWt18k: row.gold_wt_18k,

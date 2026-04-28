@@ -3,7 +3,7 @@
 // NO customization (no material/carat selectors). Specs are read-only.
 //
 // Layout:
-//   - Left:  sticky image
+//   - Left:  sticky image column (main image + thumbnail strip)
 //   - Right: breadcrumb → title → SKU → price → quantity → Add to Bag
 //            → description → feature bullets → spec table
 //
@@ -21,6 +21,12 @@ interface PageState {
 }
 
 const state: PageState = { quantity: 1 };
+
+// Returns the gallery, guaranteeing at least one entry (the primary image).
+function getGallery(product: Product): string[] {
+  if (product.images && product.images.length > 0) return product.images;
+  return [product.image];
+}
 
 // ─── Feature bullets ────────────────────────────────────────────────────────
 function renderFeatureList(): string {
@@ -157,6 +163,45 @@ function getAdjacent(
   };
 }
 
+// ─── Image column (main + thumbnails) ───────────────────────────────────────
+function renderImageColumn(product: Product): string {
+  const gallery = getGallery(product);
+  const showThumbs = gallery.length > 1;
+
+  return `
+    <div class="pdp-image-col">
+      <div class="pdp-image-wrap" data-product-cursor>
+        <img src="${gallery[0]}" alt="${product.name}" id="pdp-main-image" />
+      </div>
+      ${
+        showThumbs
+          ? `
+        <div class="pdp-thumb-strip" role="tablist" aria-label="Product images">
+          ${gallery
+            .map(
+              (url, i) => `
+                <button
+                  type="button"
+                  class="pdp-thumb ${i === 0 ? "is-active" : ""}"
+                  data-thumb-index="${i}"
+                  data-thumb-url="${url}"
+                  aria-label="View image ${i + 1} of ${gallery.length}"
+                  role="tab"
+                  aria-selected="${i === 0 ? "true" : "false"}"
+                >
+                  <img src="${url}" alt="" loading="lazy" />
+                </button>
+              `
+            )
+            .join("")}
+        </div>
+      `
+          : ""
+      }
+    </div>
+  `;
+}
+
 // ─── Top-level render ───────────────────────────────────────────────────────
 export function renderProductPage(
   product: Product,
@@ -200,11 +245,7 @@ export function renderProductPage(
 
       <div class="pdp-layout">
         <!-- LEFT: image -->
-        <div class="pdp-image-col">
-          <div class="pdp-image-wrap" data-product-cursor>
-            <img src="${product.image}" alt="${product.name}" id="pdp-main-image" />
-          </div>
-        </div>
+        ${renderImageColumn(product)}
 
         <!-- RIGHT: info -->
         <div class="pdp-info-col">
@@ -239,7 +280,8 @@ export function renderProductPage(
             <p class="pdp-description">
               ${
                 product.description ||
-                `A modern take on a daily classic — designed to be worn alone or layered. Lab-grown diamonds set in recycled metal, hand-finished in small batches.`
+                `A modern take on a daily classic — designed to be worn alone or layered.
+                Lab-grown diamonds set in recycled metal, hand-finished in small batches.`
               }
             </p>
 
@@ -291,6 +333,23 @@ export function initProductPageEvents(product: Product, allProducts: Product[]) 
       const s = btn.querySelector("span:first-child");
       if (s) s.textContent = "Add to Bag";
     }, 1500);
+  });
+
+  // Thumbnail strip — click swaps the main image
+  const mainImg = document.getElementById("pdp-main-image") as HTMLImageElement | null;
+  const thumbs = document.querySelectorAll<HTMLButtonElement>(".pdp-thumb");
+  thumbs.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const url = btn.dataset.thumbUrl;
+      if (!url || !mainImg) return;
+      mainImg.src = url;
+      thumbs.forEach((t) => {
+        t.classList.remove("is-active");
+        t.setAttribute("aria-selected", "false");
+      });
+      btn.classList.add("is-active");
+      btn.setAttribute("aria-selected", "true");
+    });
   });
 
   // Keyboard navigation

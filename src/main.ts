@@ -74,6 +74,9 @@ import { authStore } from "./lib/authStore.ts";
 import { initCustomCursor } from "./utils/cursor.ts";
 import { initScrollReveal } from "./utils/reveal.ts";
 import { parseRoute, onRouteChange, type Route } from "./utils/router.ts";
+import { config } from "./lib/config.ts";
+import { fetchAllActiveProducts } from "./services/productServices.ts";
+import type { Product } from "./types/product.ts";
 
 // ─── State ──────────────────────────────────────────────────────────────────
 let cursorHandle: { destroy: () => void } | null = null;
@@ -81,6 +84,48 @@ let revealHandle: { destroy: () => void } | null = null;
 let cartHeaderUnsub: (() => void) | null = null;
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
+
+// Cache the catalog for the lifetime of a single route render. We refetch on
+// every route change so that products added through the admin portal show up
+// without a full page reload.
+let catalogCache: Product[] | null = null;
+let catalogPromise: Promise<Product[]> | null = null;
+
+const isSupabaseConfigured = () =>
+  Boolean(config.supabase.url) && Boolean(config.supabase.anonKey);
+
+/**
+ * Loads the current catalog from Supabase (or falls back to mockProducts in
+ * dev). The result is cached per-render and invalidated on every route
+ * change, so the storefront always reflects the latest admin edits.
+ */
+function loadCatalog(): Promise<Product[]> {
+  if (catalogCache) return Promise.resolve(catalogCache);
+  if (catalogPromise) return catalogPromise;
+
+  if (!isSupabaseConfigured()) {
+    catalogCache = [...mockProducts];
+    return Promise.resolve(catalogCache);
+  }
+
+  catalogPromise = fetchAllActiveProducts()
+    .then((products) => {
+      // If Supabase returns nothing (e.g. transient error, RLS misconfig)
+      // don't strand the user on an empty page — fall back to mock data.
+      catalogCache = products.length > 0 ? products : [...mockProducts];
+      return catalogCache;
+    })
+    .catch((err) => {
+      console.error("Failed to load catalog from Supabase:", err);
+      catalogCache = [...mockProducts];
+      return catalogCache;
+    })
+    .finally(() => {
+      catalogPromise = null;
+    });
+
+  return catalogPromise;
+}
 
 // ─── Bootstrap ──────────────────────────────────────────────────────────────
 authStore.init().then(() => {
@@ -108,6 +153,10 @@ function teardown() {
   document.body.style.overflow = "";
   document.body.classList.remove("landing-mode");
   window.scrollTo(0, 0);
+
+  // Invalidate the catalog cache between route renders so newly-added
+  // products from the admin portal appear without a full page reload.
+  catalogCache = null;
 }
 
 function mountEditorialShell(mainHtml: string) {
@@ -124,6 +173,18 @@ function mountEditorialShell(mainHtml: string) {
   revealHandle = initScrollReveal();
   initFooterEvents();
   cartHeaderUnsub = initLandingHeader();
+}
+
+function loadingShell(): string {
+  return `
+    <section class="category-page">
+      <div class="cat-empty" style="padding: 120px 24px;">
+        <p style="font-family: var(--landing-mono); font-size: 13px; color: var(--smoke); letter-spacing: 0.1em; text-transform: uppercase;">
+          Loading…
+        </p>
+      </div>
+    </section>
+  `;
 }
 
 // ─── Dispatch ───────────────────────────────────────────────────────────────
@@ -173,18 +234,35 @@ function renderLanding() {
   cartHeaderUnsub = initLandingHeader();
 }
 
-function renderCategory(route: Extract<Route, { kind: "category" }>) {
-  mountEditorialShell(renderCategoryPage(route.subCategory, mockProducts));
-  initCategoryPageEvents(mockProducts);
+async function renderCategory(route: Extract<Route, { kind: "category" }>) {
+  // Show shell immediately so the page doesn't blank out
+  mountEditorialShell(loadingShell());
+  const products = await loadCatalog();
+
+  // Re-check route in case the user navigated away during the fetch
+  if (parseRoute().kind !== "category") return;
+
+  mountEditorialShell(renderCategoryPage(route.subCategory, products));
+  initCategoryPageEvents(products);
 }
 
-function renderGender(route: Extract<Route, { kind: "gender" }>) {
-  mountEditorialShell(renderGenderPage(route.gender, mockProducts));
-  initCategoryPageEvents(mockProducts);
+async function renderGender(route: Extract<Route, { kind: "gender" }>) {
+  mountEditorialShell(loadingShell());
+  const products = await loadCatalog();
+
+  if (parseRoute().kind !== "gender") return;
+
+  mountEditorialShell(renderGenderPage(route.gender, products));
+  initCategoryPageEvents(products);
 }
 
-function renderProduct(route: Extract<Route, { kind: "product" }>) {
-  const product = mockProducts.find(
+async function renderProduct(route: Extract<Route, { kind: "product" }>) {
+  mountEditorialShell(loadingShell());
+  const products = await loadCatalog();
+
+  if (parseRoute().kind !== "product") return;
+
+  const product = products.find(
     (p) => p.sku.toUpperCase() === route.sku.toUpperCase()
   );
 
@@ -203,8 +281,8 @@ function renderProduct(route: Extract<Route, { kind: "product" }>) {
     return;
   }
 
-  mountEditorialShell(renderProductPage(product, mockProducts));
-  initProductPageEvents(product, mockProducts);
+  mountEditorialShell(renderProductPage(product, products));
+  initProductPageEvents(product, products);
 }
 
 function renderCart() {
