@@ -2,13 +2,15 @@
 // Composes every landing-page section and owns the init / cleanup lifecycle.
 // Call `renderLandingPage()` to get the HTML string, then `initLandingPage()`
 // once the DOM is in place to wire up the cursor, scroll-reveal, and forms.
+//
+// Note: the standalone "Two collections, one philosophy" gender strip has been
+// removed — Men now lives inside the main category strip as the fifth tile.
 // ────────────────────────────────────────────────────────────────────────────
 
 import { renderAnnounceBar } from "./AnnounceBar";
 import { renderLandingHeader } from "./LandingHeader";
 import { renderHero } from "./Hero";
 import { renderCategoryStrip } from "./CategoryStrip";
-import { renderGenderStrip } from "./GenderStrip";
 import { renderManifesto } from "./Manifesto";
 import { renderFeaturedProducts } from "./FeaturedProducts";
 import { renderSplitFeature } from "./SplitFeature";
@@ -24,7 +26,6 @@ export function renderLandingPage(): string {
     <main class="landing-main">
       ${renderHero()}
       ${renderCategoryStrip()}
-      ${renderGenderStrip()}
       ${renderManifesto()}
       ${renderFeaturedProducts()}
       ${renderSplitFeature()}

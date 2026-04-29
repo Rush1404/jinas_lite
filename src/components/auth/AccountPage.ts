@@ -32,7 +32,7 @@ export function renderAccountPage(): string {
         </div>
         <div class="account-header-actions">
           ${isAdmin ? `<a href="${routes.admin()}" class="btn-ghost"><span>Admin portal</span></a>` : ""}
-          <button class="btn-ghost" id="signout-btn"><span>Sign out</span></button>
+          <button class="btn-ghost" id="signout-btn" type="button"><span>Sign out</span></button>
         </div>
       </header>
 
@@ -46,11 +46,50 @@ export function renderAccountPage(): string {
   `;
 }
 
-export function initAccountPage() {
-  document.getElementById("signout-btn")?.addEventListener("click", async () => {
-    await authStore.signOut();
+// ─── Sign-out handler ───────────────────────────────────────────────────────
+// We attach the listener via a delegated handler on `document` rather than
+// directly on the button. Reasons:
+//
+//   1. The button has a `<span>` child plus an absolutely-positioned `::before`
+//      pseudo-element from the `.btn-ghost` style. Clicks always bubble up to
+//      the button, but the delegated handler is robust either way.
+//   2. After `authStore.signOut()` resolves, Supabase fires `onAuthStateChange`
+//      which triggers a global re-render. That re-render replaces the DOM and
+//      can race with anything we do *after* the await. By navigating *before*
+//      the await, the route change is already queued and the post-signout
+//      re-render lands on the landing page rather than the empty account page.
+//
+// We also guard against double-attach (e.g. if initAccountPage runs twice
+// because of an auth-state-change-driven re-render mid-flow).
+// ────────────────────────────────────────────────────────────────────────────
+
+let signOutHandler: ((e: Event) => void) | null = null;
+
+function attachSignOutHandler() {
+  if (signOutHandler) return; // already attached for this app session
+
+  signOutHandler = (e: Event) => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    const btn = target.closest("#signout-btn");
+    if (!btn) return;
+
+    e.preventDefault();
+
+    // Navigate FIRST so the route change is queued before any auth-driven
+    // re-render kicks in. Then fire-and-forget the actual sign out.
     navigate(routes.landing());
-  });
+
+    authStore.signOut().catch((err) => {
+      console.error("Sign out failed:", err);
+    });
+  };
+
+  document.addEventListener("click", signOutHandler);
+}
+
+export function initAccountPage() {
+  attachSignOutHandler();
 
   // Load orders async
   loadOrders();

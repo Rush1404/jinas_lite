@@ -499,14 +499,14 @@ body.cursor-view .cursor-ring::after {
 }
 .category-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 2px;
   background: var(--line);
   border: 1px solid var(--line);
 }
 .cat-card {
   background: var(--bone);
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 3 / 5;
   position: relative;
   overflow: hidden;
   display: flex;

@@ -1,5 +1,5 @@
-// ─── Landing page data ──────────────────────────────────────────────────────
-// Content for the Mejuri-inspired editorial homepage.
+// ─── Landing data ───────────────────────────────────────────────────────────
+// Static config powering the landing page tiles + featured product picks.
 // Swap in real product data / CDN images when ready.
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -24,6 +24,8 @@ export interface LandingProduct {
 }
 
 // ─── Shop by category (subcategory tiles) ────────────────────────────────────
+// Men sits as the fifth tile alongside the four sub-category tiles, so the
+// landing page no longer needs a separate gender strip.
 export const landingCategories: LandingCategory[] = [
   {
     num: "№ 01",
@@ -49,9 +51,19 @@ export const landingCategories: LandingCategory[] = [
     image: "https://images.unsplash.com/photo-1724937721228-f7bf3df2a4d8?q=80",
     href: routes.category("PENDANT"),
   },
+  {
+    num: "№ 05",
+    label: "Men",
+    image: "https://images.unsplash.com/photo-1611652022419-a9419f74343d?w=1200&q=80",
+    href: routes.gender("MEN"),
+  },
 ];
 
-// ─── Shop by gender (women / men tiles) ──────────────────────────────────────
+// ─── Shop by gender ─────────────────────────────────────────────────────────
+// (Deprecated for the landing page — Men now lives inside `landingCategories`.
+//  Kept exported so the now-unused GenderStrip component still type-checks.
+//  Safe to delete this export and `src/components/landing/GenderStrip.ts`
+//  together if you want to clean up.)
 export const landingGenderCategories: LandingCategory[] = [
   {
     num: "№ 01",

@@ -1,6 +1,7 @@
 // ─── Category Strip ─────────────────────────────────────────────────────────
-// Four large photo tiles with a number label, title, and explore CTA.
+// Five large photo tiles with a number label, title, and explore CTA.
 // Images zoom on hover; CTA gap widens as a subtle direction cue.
+// (Men sits as the fifth tile alongside the four sub-categories.)
 // ────────────────────────────────────────────────────────────────────────────
 
 import { landingCategories, type LandingCategory } from "../../data/landing";
@@ -31,11 +32,11 @@ export function renderCategoryStrip(): string {
     <section class="category-strip">
       <div class="strip-header">
         <h2 class="strip-title" data-reveal>
-          Four <em>shapes</em><br>to start with.
+          Five <em>shapes</em><br>to start with.
         </h2>
         <div class="strip-meta" data-reveal>
           Shop by category
-          <span>01 / 05 — The Edit</span>
+          <span>01 / 04 — The Edit</span>
         </div>
       </div>
 
