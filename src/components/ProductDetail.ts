@@ -3,6 +3,7 @@ import { formatCurrency, formatCategory } from "../utils/filters";
 
 let currentQuantity = 1;
 let selectedCarat: number | null = null;
+let selectedColor: string | null = null; // New state for color
 
 export function renderProductDetail(
   product: Product,
@@ -11,6 +12,21 @@ export function renderProductDetail(
 ): string {
   selectedCarat = product.selectedCarat;
   currentQuantity = 1;
+  
+  // Default to the first color available
+  selectedColor = product.colors && product.colors.length > 0 ? product.colors[0] : null;
+
+  // Determine which image to show on initial load
+  let displayImage = product.image;
+  if (selectedColor && product.variantImages && product.variantImages.length > 0) {
+    const matchedImage = product.variantImages.find(img => img.color === selectedColor);
+    if (matchedImage) displayImage = matchedImage.url;
+  }
+
+  // Inject variant images data into the DOM so our event listeners can access it
+  const variantDataString = product.variantImages 
+    ? encodeURIComponent(JSON.stringify(product.variantImages)) 
+    : "[]";
 
   return `
     <div class="product-detail-overlay active" id="product-detail-overlay">
@@ -24,7 +40,7 @@ export function renderProductDetail(
         <!-- Image column (sticky) -->
         <div class="product-detail-image-col">
           <div class="product-detail-image">
-            <img src="${product.image}" alt="${product.name}" />
+            <img id="detail-main-image" src="${displayImage}" alt="${product.name}" data-variants="${variantDataString}" />
           </div>
         </div>
 
@@ -37,6 +53,20 @@ export function renderProductDetail(
             <h2 class="product-detail-title">${product.name}</h2>
             <p class="product-detail-price">${formatCurrency(product.price)}</p>
           </div>
+
+          <!-- Color Options (New Section) -->
+          ${product.colors && product.colors.length > 0 ? `
+            <div class="detail-section">
+              <p class="detail-section-label">Color</p>
+              <div class="color-options">
+                ${product.colors.map(color => `
+                  <button class="color-option ${color === selectedColor ? "active" : ""}" data-color="${color}">
+                    ${color}
+                  </button>
+                `).join("")}
+              </div>
+            </div>
+          ` : ""}
 
           <!-- Carat Options -->
           <div class="detail-section">
@@ -168,13 +198,52 @@ export function initProductDetailEvents(callbacks: {
     });
   });
 
+  // Color Selection (New Logic)
+  const colorBtns = overlay.querySelectorAll<HTMLButtonElement>(".color-option");
+  const mainImage = document.getElementById("detail-main-image") as HTMLImageElement;
+  
+  colorBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      // Update UI active state
+      colorBtns.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      
+      // Update selected color
+      selectedColor = btn.dataset.color!;
+      
+      // Parse the variants we injected into the DOM
+      if (mainImage && mainImage.dataset.variants) {
+        try {
+          const variants: { url: string, color: string }[] = JSON.parse(decodeURIComponent(mainImage.dataset.variants));
+          const matchedImage = variants.find(img => img.color === selectedColor);
+          
+          if (matchedImage) {
+            // Smoothly fade image (optional but nice)
+            mainImage.style.opacity = '0.5';
+            setTimeout(() => {
+              mainImage.src = matchedImage.url;
+              mainImage.style.opacity = '1';
+            }, 150);
+          }
+        } catch (e) {
+          console.error("Failed to parse image variants", e);
+        }
+      }
+    });
+  });
+
   // Nav arrows
   document.getElementById("nav-prev")?.addEventListener("click", callbacks.onPrev);
   document.getElementById("nav-next")?.addEventListener("click", callbacks.onNext);
 
   // Add to cart
   document.getElementById("detail-add-to-cart")?.addEventListener("click", () => {
-    console.log("Add to cart:", { sku: "detail", carat: selectedCarat, quantity: currentQuantity });
+    console.log("Add to cart:", { 
+      sku: "detail", 
+      carat: selectedCarat, 
+      color: selectedColor, // Now passes color to the cart
+      quantity: currentQuantity 
+    });
   });
 }
 

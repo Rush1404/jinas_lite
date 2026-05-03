@@ -116,24 +116,6 @@ function renderCard(product: Product): string {
   `;
 }
 
-function renderPromo(promo: PromoTile): string {
-  return `
-    <a href="${promo.href}" class="cat-promo-tile cat-promo-${promo.accent}" data-reveal>
-      <div class="cat-promo-inner">
-        <span class="cat-promo-kicker">The Edit</span>
-        <h3 class="cat-promo-headline">${promo.headline}</h3>
-        <p class="cat-promo-sublabel">${promo.sublabel}</p>
-        <span class="cat-promo-cta">
-          ${promo.cta}
-          <svg viewBox="0 0 14 10" fill="none" width="14" height="10">
-            <path d="M1 5h12M13 5L9 1M13 5L9 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-          </svg>
-        </span>
-      </div>
-    </a>
-  `;
-}
-
 function renderFilterBar(productCount: number): string {
   return `
     <div class="cat-filter-bar">
@@ -199,9 +181,7 @@ function renderGrid(opts: {
   const itemsHtml: string[] = [];
   products.forEach((p, i) => {
     itemsHtml.push(renderCard(p));
-    if (i === 2) itemsHtml.push(renderPromo(promo));
   });
-  if (products.length <= 2) itemsHtml.push(renderPromo(promo));
 
   return `
     <section class="category-page">

@@ -127,7 +127,7 @@ body.landing-mode .category-page {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 1px;
-    background: var(--line);
+    background: var(--bone);
     border-bottom: 1px solid var(--line);
 }
 
@@ -146,7 +146,7 @@ body.landing-mode .category-page {
   aspect-ratio: 1;
   position: relative;
   overflow: hidden;
-  background: var(--paper);
+  background: var(--color-surface);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -404,7 +404,7 @@ body.landing-mode .pdp-page {
 .pdp-image-wrap {
   position: relative;
   background: var(--paper);
-  aspect-ratio: 4 / 5;
+  aspect-ratio: 16 / 9;
   overflow: hidden;
 }
 .pdp-image-wrap img {
@@ -416,7 +416,7 @@ body.landing-mode .pdp-page {
 .pdp-image-wrap:hover img { transform: scale(1.03); }
 
 .pdp-image-secondary {
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 3 / 2;
   filter: saturate(0.95);
 }
 

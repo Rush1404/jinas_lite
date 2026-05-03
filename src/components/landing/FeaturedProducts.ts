@@ -49,7 +49,7 @@ const arrowSvg = `
 export function renderFeaturedProducts(): string {
   return `
     <section class="featured">
-      <div class="featured-header">
+      <div class="featured-header" id="edit">
         <h2 data-reveal>The <em>edit</em>,<br>picked by Jina.</h2>
         <div class="meta" data-reveal>Six pieces · Spring 2026</div>
       </div>

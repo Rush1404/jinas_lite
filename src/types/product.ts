@@ -1,3 +1,9 @@
+// Add this new interface at the top (below your imports if you have any)
+export interface ProductVariantImage {
+  url: string;
+  color: string;
+}
+
 export interface Product {
   id: string;
   sku: string;
@@ -5,6 +11,10 @@ export interface Product {
   image: string;
   /** All images (primary + gallery). First entry mirrors `image`. */
   images?: string[];
+  /** Array of available colors (e.g., ["Silver", "Gold"]) */
+  colors?: string[]; 
+  /** Images tied to specific colors */
+  variantImages?: ProductVariantImage[]; 
   description?: string;
   diamondCaratOptions: number[];
   selectedCarat: number;
