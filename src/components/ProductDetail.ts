@@ -1,9 +1,42 @@
-import { Product } from "../types/product";
+import {
+  type Product,
+  type GalleryImage,
+  availableColors,
+  galleryForColor,
+} from "../types/product";
 import { formatCurrency, formatCategory } from "../utils/filters";
 
 let currentQuantity = 1;
 let selectedCarat: number | null = null;
-let selectedColor: string | null = null; // New state for color
+let selectedColor: string | null = null;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Renders the thumbnail strip for a given gallery slice. */
+function renderThumbs(gallery: GalleryImage[], activeIndex: number = 0): string {
+  if (gallery.length <= 1) return "";
+  return gallery
+    .map(
+      (g, i) => `
+      <button
+        class="detail-thumb ${i === activeIndex ? "active" : ""}"
+        data-thumb-index="${i}"
+        data-thumb-url="${g.url}"
+        aria-label="View image ${i + 1}"
+      >
+        <img src="${g.url}" alt="Product view ${i + 1}" loading="lazy" />
+      </button>
+    `
+    )
+    .join("");
+}
+
+function getGallery(product: Product): GalleryImage[] {
+  if (product.gallery && product.gallery.length > 0) return product.gallery;
+  return [{ url: product.image, color: null }];
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
 
 export function renderProductDetail(
   product: Product,
@@ -12,21 +45,17 @@ export function renderProductDetail(
 ): string {
   selectedCarat = product.selectedCarat;
   currentQuantity = 1;
-  
-  // Default to the first color available
-  selectedColor = product.colors && product.colors.length > 0 ? product.colors[0] : null;
 
-  // Determine which image to show on initial load
-  let displayImage = product.image;
-  if (selectedColor && product.variantImages && product.variantImages.length > 0) {
-    const matchedImage = product.variantImages.find(img => img.color === selectedColor);
-    if (matchedImage) displayImage = matchedImage.url;
-  }
+  const fullGallery = getGallery(product);
+  const colors = availableColors(fullGallery);
+  selectedColor = colors[0] ?? null;
 
-  // Inject variant images data into the DOM so our event listeners can access it
-  const variantDataString = product.variantImages 
-    ? encodeURIComponent(JSON.stringify(product.variantImages)) 
-    : "[]";
+  // Initial slice for the default color (or full gallery if untagged)
+  const initialGallery = galleryForColor(fullGallery, selectedColor);
+  const heroImage = initialGallery[0]?.url ?? product.image;
+
+  // Encode the FULL gallery so the swatch handler can re-filter on click
+  const fullGalleryAttr = encodeURIComponent(JSON.stringify(fullGallery));
 
   return `
     <div class="product-detail-overlay active" id="product-detail-overlay">
@@ -37,14 +66,27 @@ export function renderProductDetail(
       </button>
 
       <div class="product-detail-modal">
-        <!-- Image column (sticky) -->
-        <div class="product-detail-image-col">
+
+        <!-- ── Image column (sticky) ── -->
+        <div class="product-detail-image-col" data-full-gallery="${fullGalleryAttr}">
+
+          <!-- Main image -->
           <div class="product-detail-image">
-            <img id="detail-main-image" src="${displayImage}" alt="${product.name}" data-variants="${variantDataString}" />
+            <img
+              id="detail-main-image"
+              src="${heroImage}"
+              alt="${product.name}"
+            />
           </div>
+
+          <!-- Thumbnail strip — replaced wholesale on color change -->
+          <div class="detail-thumbs" id="detail-thumbs">
+            ${renderThumbs(initialGallery, 0)}
+          </div>
+
         </div>
 
-        <!-- Content column -->
+        <!-- ── Content column ── -->
         <div class="product-detail-content">
 
           <!-- Header: SKU + Name + Price -->
@@ -54,19 +96,30 @@ export function renderProductDetail(
             <p class="product-detail-price">${formatCurrency(product.price)}</p>
           </div>
 
-          <!-- Color Options (New Section) -->
-          ${product.colors && product.colors.length > 0 ? `
+          <!-- Color Options -->
+          ${
+            colors.length > 0
+              ? `
             <div class="detail-section">
               <p class="detail-section-label">Color</p>
               <div class="color-options">
-                ${product.colors.map(color => `
-                  <button class="color-option ${color === selectedColor ? "active" : ""}" data-color="${color}">
+                ${colors
+                  .map(
+                    (color) => `
+                  <button
+                    class="color-option ${color === selectedColor ? "active" : ""}"
+                    data-color="${color}"
+                  >
                     ${color}
                   </button>
-                `).join("")}
+                `
+                  )
+                  .join("")}
               </div>
             </div>
-          ` : ""}
+          `
+              : ""
+          }
 
           <!-- Carat Options -->
           <div class="detail-section">
@@ -151,6 +204,8 @@ export function renderProductDetail(
   `;
 }
 
+// ─── Events ───────────────────────────────────────────────────────────────────
+
 export function initProductDetailEvents(callbacks: {
   onClose: () => void;
   onPrev: () => void;
@@ -159,10 +214,70 @@ export function initProductDetailEvents(callbacks: {
   const overlay = document.getElementById("product-detail-overlay");
   if (!overlay) return;
 
-  // Close button
+  const imageCol = overlay.querySelector<HTMLElement>(".product-detail-image-col");
+  const mainImage = document.getElementById("detail-main-image") as HTMLImageElement;
+  const thumbsContainer = document.getElementById("detail-thumbs") as HTMLDivElement;
+
+  // Read the full gallery off the DOM
+  let fullGallery: GalleryImage[] = [];
+  try {
+    const raw = imageCol?.dataset.fullGallery;
+    if (raw) fullGallery = JSON.parse(decodeURIComponent(raw));
+  } catch (e) {
+    console.error("Failed to parse full gallery", e);
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  /** Swap the main image with a fade, update active thumb. */
+  function setMainImage(url: string, activeThumbIndex: number) {
+    mainImage.style.opacity = "0";
+    mainImage.style.transform = "scale(1.015)";
+    setTimeout(() => {
+      mainImage.src = url;
+      mainImage.style.opacity = "1";
+      mainImage.style.transform = "scale(1)";
+    }, 140);
+
+    thumbsContainer
+      .querySelectorAll<HTMLButtonElement>(".detail-thumb")
+      .forEach((t, i) => t.classList.toggle("active", i === activeThumbIndex));
+  }
+
+  /** Replace the entire thumbnail strip and set a new hero image. */
+  function setColorGallery(gallery: GalleryImage[]) {
+    thumbsContainer.innerHTML = renderThumbs(gallery, 0);
+
+    if (gallery.length > 0) {
+      mainImage.style.opacity = "0";
+      mainImage.style.transform = "scale(1.015)";
+      setTimeout(() => {
+        mainImage.src = gallery[0].url;
+        mainImage.style.opacity = "1";
+        mainImage.style.transform = "scale(1)";
+      }, 140);
+    }
+
+    bindThumbEvents();
+  }
+
+  /** Attach click handlers to the current set of thumbnail buttons. */
+  function bindThumbEvents() {
+    thumbsContainer
+      .querySelectorAll<HTMLButtonElement>(".detail-thumb")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(btn.dataset.thumbIndex!, 10);
+          const url = btn.dataset.thumbUrl!;
+          setMainImage(url, idx);
+        });
+      });
+  }
+
+  // ── Close / keyboard ────────────────────────────────────────────────────
+
   document.getElementById("close-detail")?.addEventListener("click", callbacks.onClose);
 
-  // Escape key
   const keyHandler = (e: KeyboardEvent) => {
     if (e.key === "Escape") callbacks.onClose();
     if (e.key === "ArrowLeft") callbacks.onPrev();
@@ -171,7 +286,8 @@ export function initProductDetailEvents(callbacks: {
   document.addEventListener("keydown", keyHandler);
   (overlay as any)._keyHandler = keyHandler;
 
-  // Quantity controls
+  // ── Quantity ─────────────────────────────────────────────────────────────
+
   const qtyMinus = document.getElementById("qty-minus");
   const qtyPlus = document.getElementById("qty-plus");
   const qtyValue = document.getElementById("qty-value");
@@ -188,7 +304,8 @@ export function initProductDetailEvents(callbacks: {
     if (qtyValue) qtyValue.textContent = currentQuantity.toString();
   });
 
-  // Carat selection
+  // ── Carat selection ──────────────────────────────────────────────────────
+
   const caratBtns = overlay.querySelectorAll<HTMLButtonElement>(".carat-option");
   caratBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -198,51 +315,40 @@ export function initProductDetailEvents(callbacks: {
     });
   });
 
-  // Color Selection (New Logic)
+  // ── Color selection → filtered gallery swap ──────────────────────────────
+
   const colorBtns = overlay.querySelectorAll<HTMLButtonElement>(".color-option");
-  const mainImage = document.getElementById("detail-main-image") as HTMLImageElement;
-  
+
   colorBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
-      // Update UI active state
+      const newColor = btn.dataset.color!;
+      if (newColor === selectedColor) return;
+
       colorBtns.forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-      
-      // Update selected color
-      selectedColor = btn.dataset.color!;
-      
-      // Parse the variants we injected into the DOM
-      if (mainImage && mainImage.dataset.variants) {
-        try {
-          const variants: { url: string, color: string }[] = JSON.parse(decodeURIComponent(mainImage.dataset.variants));
-          const matchedImage = variants.find(img => img.color === selectedColor);
-          
-          if (matchedImage) {
-            // Smoothly fade image (optional but nice)
-            mainImage.style.opacity = '0.5';
-            setTimeout(() => {
-              mainImage.src = matchedImage.url;
-              mainImage.style.opacity = '1';
-            }, 150);
-          }
-        } catch (e) {
-          console.error("Failed to parse image variants", e);
-        }
-      }
+      selectedColor = newColor;
+
+      const filtered = galleryForColor(fullGallery, newColor);
+      setColorGallery(filtered);
     });
   });
 
-  // Nav arrows
+  // ── Initial thumb binding ────────────────────────────────────────────────
+  bindThumbEvents();
+
+  // ── Nav arrows ────────────────────────────────────────────────────────────
+
   document.getElementById("nav-prev")?.addEventListener("click", callbacks.onPrev);
   document.getElementById("nav-next")?.addEventListener("click", callbacks.onNext);
 
-  // Add to cart
+  // ── Add to cart ───────────────────────────────────────────────────────────
+
   document.getElementById("detail-add-to-cart")?.addEventListener("click", () => {
-    console.log("Add to cart:", { 
-      sku: "detail", 
-      carat: selectedCarat, 
-      color: selectedColor, // Now passes color to the cart
-      quantity: currentQuantity 
+    console.log("Add to cart:", {
+      sku: "detail",
+      carat: selectedCarat,
+      color: selectedColor,
+      quantity: currentQuantity,
     });
   });
 }

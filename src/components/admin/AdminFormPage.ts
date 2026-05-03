@@ -1,10 +1,16 @@
 // ─── Admin Form Page ────────────────────────────────────────────────────────
 // Single form used for both creating and editing a product. Handles:
-//   - MULTI-IMAGE gallery editor (upload, paste URL, reorder, remove)
+//   - MULTI-IMAGE gallery editor with PER-IMAGE COLOR TAGS
+//     (upload, paste URL, reorder, remove, tag color)
 //   - All specification fields (gold weights, diamond weight, silver, size)
 //   - Price, SKU, name, description
 //   - Sub-category, category (collection), gender
 //   - Active/hidden toggle
+//
+// Color tags: each gallery image can be tagged with a color (e.g. "silver",
+// "gold"), or left as "Any color" (null) to be shown for every selection.
+// On the storefront, picking a color swatch on the PDP filters the
+// thumbnail strip to images matching that tag (plus untagged images).
 // ────────────────────────────────────────────────────────────────────────────
 
 import {
@@ -16,7 +22,13 @@ import {
 } from "../../services/adminService";
 import { isAdminUnlocked } from "../../lib/adminGate";
 import { routes, navigate } from "../../utils/router";
-import type { Product, SubCategory, Category, Gender } from "../../types/product";
+import type {
+  Product,
+  GalleryImage,
+  SubCategory,
+  Category,
+  Gender,
+} from "../../types/product";
 
 const SUB_CATEGORIES: SubCategory[] = ["RING", "EARRING", "LOOSE_BRACELET", "PENDANT"];
 const CATEGORIES: Category[] = [
@@ -30,10 +42,24 @@ const CATEGORIES: Category[] = [
 ];
 const GENDERS: Gender[] = ["WOMEN", "MEN", "UNISEX"];
 
+// The set of color options Jina can pick from. Add more here as needed —
+// the only thing that has to be lowercase is the *value*; the label is free.
+// "" represents "Any color" (untagged) and is stored as NULL.
+const COLOR_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Any color" },
+  { value: "silver", label: "Silver" },
+  { value: "gold", label: "Gold" },
+  { value: "rose gold", label: "Rose Gold" },
+  { value: "white gold", label: "White Gold" },
+];
+
 let currentProduct: Product | null = null;
 
-/** Local gallery state. The first entry is always the primary image. */
-let galleryImages: string[] = [];
+/**
+ * Local gallery state. The first entry is always the primary image.
+ * Each entry carries a color tag (or null for "any color").
+ */
+let galleryImages: GalleryImage[] = [];
 
 // ─── Render ─────────────────────────────────────────────────────────────────
 export function renderAdminFormPage(mode: "new" | "edit", sku?: string): string {
@@ -74,11 +100,13 @@ export async function initAdminFormPage(mode: "new" | "edit", sku?: string) {
   }
 
   // Seed the gallery from the existing product (or empty for new).
-  galleryImages = currentProduct?.images?.length
-    ? [...currentProduct.images]
-    : currentProduct?.image
-    ? [currentProduct.image]
-    : [];
+  if (currentProduct?.gallery?.length) {
+    galleryImages = currentProduct.gallery.map((g) => ({ ...g }));
+  } else if (currentProduct?.image) {
+    galleryImages = [{ url: currentProduct.image, color: null }];
+  } else {
+    galleryImages = [];
+  }
 
   mount.innerHTML = renderForm(currentProduct);
   rerenderGalleryStrip();
@@ -97,14 +125,18 @@ function renderForm(product: Product | null): string {
       <div class="admin-gallery-section">
         <div class="admin-gallery-header">
           <label class="admin-label">Images</label>
-          <p class="admin-hint">First image is the primary. It's what shows on cards. Drag-free reorder: use the "Make primary" button on any thumbnail.</p>
+          <p class="admin-hint">
+            First image is the primary — it shows on cards. Tag each image with
+            a color so the storefront can filter by silver / gold / etc. Leave
+            as "Any color" for lifestyle or scale shots that should show
+            regardless of color.
+          </p>
         </div>
         <div class="admin-gallery-strip" id="gallery-strip"></div>
         <p class="admin-gallery-error auth-error" id="gallery-error" hidden></p>
       </div>
 
       <div class="admin-form-grid admin-form-grid-single">
-        <!-- ── Fields column (full width now) ──────────────────────── -->
         <div class="admin-form-col admin-form-col-wide">
 
           <div class="admin-row-2">
@@ -122,8 +154,7 @@ function renderForm(product: Product | null): string {
 
           <label class="admin-field">
             <span class="admin-label">Name *</span>
-            <input type="text" name="name" required value="${v("name")}" class="admin-input"
-              placeholder="e.g. Solitaire Diamond Ring" />
+            <input type="text" name="name" required value="${v("name")}" class="admin-input" />
           </label>
 
           <label class="admin-field">
@@ -136,7 +167,7 @@ function renderForm(product: Product | null): string {
               <span class="admin-label">Sub-category *</span>
               <select name="subCategory" required class="admin-input">
                 ${SUB_CATEGORIES.map(
-                  (s) => `<option value="${s}" ${v("subCategory") === s ? "selected" : ""}>${s.replace("_", " ")}</option>`
+                  (s) => `<option value="${s}" ${v("subCategory") === s ? "selected" : ""}>${s.replace(/_/g, " ")}</option>`
                 ).join("")}
               </select>
             </label>
@@ -212,12 +243,27 @@ function renderForm(product: Product | null): string {
       </div>
     </form>
 
-    <!-- Hidden file inputs for multi-image upload -->
+    <!-- Hidden file input for multi-image upload -->
     <input type="file" id="gallery-file-input" accept="image/*" multiple class="admin-file-input" />
   `;
 }
 
 // ─── Gallery strip rendering & wiring ───────────────────────────────────────
+
+function renderColorSelect(currentColor: string | null, index: number): string {
+  const current = currentColor ?? "";
+  return `
+    <select class="admin-gallery-color-select" data-color-index="${index}" aria-label="Image color tag">
+      ${COLOR_OPTIONS.map(
+        (opt) => `
+          <option value="${opt.value}" ${opt.value === current ? "selected" : ""}>
+            ${opt.label}
+          </option>
+        `
+      ).join("")}
+    </select>
+  `;
+}
 
 function rerenderGalleryStrip() {
   const strip = document.getElementById("gallery-strip");
@@ -225,13 +271,14 @@ function rerenderGalleryStrip() {
 
   const tiles = galleryImages
     .map(
-      (url, i) => `
+      (img, i) => `
         <div class="admin-gallery-tile ${i === 0 ? "is-primary" : ""}" data-index="${i}">
           <div class="admin-gallery-thumb">
-            <img src="${url}" alt="" onerror="this.outerHTML='<span class=admin-gallery-broken>Broken</span>'" />
+            <img src="${img.url}" alt="" onerror="this.outerHTML='<span class=admin-gallery-broken>Broken</span>'" />
             ${i === 0 ? `<span class="admin-gallery-badge">Primary</span>` : ""}
           </div>
           <div class="admin-gallery-tile-actions">
+            ${renderColorSelect(img.color, i)}
             ${
               i === 0
                 ? ""
@@ -283,6 +330,16 @@ function rerenderGalleryStrip() {
     });
   });
 
+  // Color selects — update gallery state live (no re-render needed)
+  strip.querySelectorAll<HTMLSelectElement>(".admin-gallery-color-select").forEach((sel) => {
+    sel.addEventListener("change", () => {
+      const idx = Number(sel.dataset.colorIndex);
+      if (Number.isNaN(idx) || !galleryImages[idx]) return;
+      const v = sel.value.trim();
+      galleryImages[idx].color = v ? v : null;
+    });
+  });
+
   // Upload trigger
   document.getElementById("gallery-upload-trigger")?.addEventListener("click", () => {
     document.getElementById("gallery-file-input")?.click();
@@ -295,11 +352,11 @@ function rerenderGalleryStrip() {
     if (!urlInput) return;
     const url = urlInput.value.trim();
     if (!url) return;
-    if (galleryImages.includes(url)) {
+    if (galleryImages.some((g) => g.url === url)) {
       urlInput.value = "";
       return;
     }
-    galleryImages.push(url);
+    galleryImages.push({ url, color: null });
     urlInput.value = "";
     rerenderGalleryStrip();
   };
@@ -326,7 +383,6 @@ function wireForm(mode: "new" | "edit") {
     const files = fileInput.files ? Array.from(fileInput.files) : [];
     if (files.length === 0) return;
 
-    // SKU is needed to namespace uploads; fall back to TEMP if not set yet.
     const skuField = form.querySelector<HTMLInputElement>('input[name="sku"]');
     const skuVal = skuField?.value.trim() || "TEMP";
 
@@ -337,7 +393,7 @@ function wireForm(mode: "new" | "edit") {
     for (const file of files) {
       try {
         const url = await uploadProductImage(file, skuVal, galleryImages.length);
-        galleryImages.push(url);
+        galleryImages.push({ url, color: null });
         done++;
         submitLabel.textContent = `Uploading ${done}/${files.length}…`;
         rerenderGalleryStrip();
@@ -351,7 +407,6 @@ function wireForm(mode: "new" | "edit") {
     }
 
     submitLabel.textContent = "Save product";
-    // Reset the input so re-selecting the same file fires `change` again
     fileInput.value = "";
   });
 
@@ -365,8 +420,8 @@ function wireForm(mode: "new" | "edit") {
       sku: String(data.get("sku") || "").trim().toUpperCase(),
       name: String(data.get("name") || "").trim(),
       description: String(data.get("description") || "").trim(),
-      image: galleryImages[0] ?? "",
-      images: [...galleryImages],
+      image: galleryImages[0]?.url ?? "",
+      gallery: galleryImages.map((g) => ({ ...g })),
       price: parseFloat(String(data.get("price") || 0)),
       goldWt18k: parseFloat(String(data.get("goldWt18k") || 0)),
       goldWt14k: parseFloat(String(data.get("goldWt14k") || 0)),

@@ -1,20 +1,32 @@
-// Add this new interface at the top (below your imports if you have any)
-export interface ProductVariantImage {
+// ─── Product Types ──────────────────────────────────────────────────────────
+
+/**
+ * A single image in a product's gallery, optionally tagged with a color.
+ * `color: null` means the image should be shown for ALL color selections
+ * (e.g. lifestyle shots, packaging, scale references).
+ */
+export interface GalleryImage {
   url: string;
-  color: string;
+  color: string | null;
 }
 
 export interface Product {
   id: string;
   sku: string;
   name: string;
+
+  /** Primary image URL — used by cards, cart, related strips. */
   image: string;
-  /** All images (primary + gallery). First entry mirrors `image`. */
-  images?: string[];
-  /** Array of available colors (e.g., ["Silver", "Gold"]) */
-  colors?: string[]; 
-  /** Images tied to specific colors */
-  variantImages?: ProductVariantImage[]; 
+
+  /**
+   * Full gallery, in display order. The first entry's URL mirrors `image`.
+   * Each entry can be tagged with a color; the PDP uses these tags to
+   * filter the thumbnail strip when the customer picks a swatch.
+   * Optional — single-image products and the mock catalog don't need it;
+   * `getGallery()` in the PDP falls back to `[{ url: image, color: null }]`.
+   */
+  gallery?: GalleryImage[];
+
   description?: string;
   diamondCaratOptions: number[];
   selectedCarat: number;
@@ -28,6 +40,38 @@ export interface Product {
   size: number;
   gender?: Gender;
   isActive?: boolean;
+}
+
+/**
+ * Pulls the unique color tags out of a gallery, in the order they first
+ * appear. Untagged images (color === null) are NOT counted as a color —
+ * they're shown for every color.
+ */
+export function availableColors(gallery: GalleryImage[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const img of gallery) {
+    if (img.color && !seen.has(img.color)) {
+      seen.add(img.color);
+      out.push(img.color);
+    }
+  }
+  return out;
+}
+
+/**
+ * Returns the gallery filtered to a given color. Untagged images are
+ * always included so lifestyle/scale shots show up in every color view.
+ * If no images match the color (and there are no untagged images either),
+ * falls back to the full gallery so the page never goes blank.
+ */
+export function galleryForColor(
+  gallery: GalleryImage[],
+  color: string | null
+): GalleryImage[] {
+  if (!color) return gallery;
+  const filtered = gallery.filter((g) => g.color === color || g.color === null);
+  return filtered.length > 0 ? filtered : gallery;
 }
 
 export type Gender = "WOMEN" | "MEN" | "UNISEX";

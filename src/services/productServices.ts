@@ -1,7 +1,7 @@
 import { supabase } from "../lib/supabase";
 import { config } from "../lib/config";
 import { getImageUrl } from "../utils/images";
-import type { Product, FilterState } from "../types/product";
+import type { Product, GalleryImage, FilterState } from "../types/product";
 
 // ─── Response types ──────────────────────────────────────────────────────────
 
@@ -13,30 +13,25 @@ export interface ProductListResult {
 }
 
 // ─── Transform DB row → frontend Product ─────────────────────────────────────
-//
-// IMPORTANT: any field the storefront filters on (gender, isActive) MUST be
-// mapped here. Otherwise category/gender pages silently filter products out.
-// `images` is attached separately by callers after a join on product_images.
-// ─────────────────────────────────────────────────────────────────────────────
 
 function rowToProduct(
   row: any,
   caratOptions: number[],
-  galleryUrls: string[] = []
+  gallery: GalleryImage[] = []
 ): Product {
   const primary = getImageUrl(row.image_path);
 
-  // The convention is that the first entry of `images` mirrors `image`.
-  // If a gallery exists, the gallery is the source of truth for ordering.
-  const images = galleryUrls.length > 0 ? galleryUrls : [primary];
+  // The convention is that the first entry of `gallery` mirrors `image`.
+  const finalGallery: GalleryImage[] =
+    gallery.length > 0 ? gallery : [{ url: primary, color: null }];
 
   return {
     id: row.id,
     sku: row.sku,
     name: row.name,
     description: row.description ?? "",
-    image: images[0] ?? primary,
-    images,
+    image: finalGallery[0]?.url ?? primary,
+    gallery: finalGallery,
     diamondCaratOptions: caratOptions,
     selectedCarat: row.default_carat,
     goldWt18k: row.gold_wt_18k,
@@ -53,18 +48,16 @@ function rowToProduct(
 }
 
 // ─── Bulk load galleries for a set of product IDs ────────────────────────────
-//
-// Returns a Map<productId, string[]> of gallery image URLs. is_primary first,
-// then ordered by sort_order.
-// ─────────────────────────────────────────────────────────────────────────────
 
-async function loadGalleries(productIds: string[]): Promise<Map<string, string[]>> {
-  const map = new Map<string, string[]>();
+async function loadGalleries(
+  productIds: string[]
+): Promise<Map<string, GalleryImage[]>> {
+  const map = new Map<string, GalleryImage[]>();
   if (productIds.length === 0) return map;
 
   const { data: imgRows, error } = await supabase
     .from("product_images")
-    .select("product_id, image_path, is_primary, sort_order")
+    .select("product_id, image_path, is_primary, sort_order, color")
     .in("product_id", productIds)
     .order("is_primary", { ascending: false })
     .order("sort_order", { ascending: true });
@@ -76,10 +69,12 @@ async function loadGalleries(productIds: string[]): Promise<Map<string, string[]
 
   imgRows?.forEach((r: any) => {
     const existing = map.get(r.product_id) ?? [];
-    existing.push(getImageUrl(r.image_path));
+    existing.push({
+      url: getImageUrl(r.image_path),
+      color: r.color ?? null,
+    });
     map.set(r.product_id, existing);
   });
-
   return map;
 }
 
@@ -126,7 +121,7 @@ export async function fetchAllActiveProducts(): Promise<Product[]> {
   );
 }
 
-// ─── Fetch products with filters + pagination ────────────────────────────────
+// ─── Fetch products with filters / pagination ────────────────────────────────
 
 export async function fetchProducts(
   filters: FilterState,
@@ -143,19 +138,12 @@ export async function fetchProducts(
     .order("sort_order", { ascending: true })
     .range(from, to);
 
-  // ── Apply filters ──────────────────────────────────────────────────────
-
   if (filters.subCategory && filters.subCategory !== "ALL") {
     query = query.eq("sub_category", filters.subCategory);
   }
-
-  if (filters.category.length > 0) {
-    query = query.in("category", filters.category);
-  }
-
+  if (filters.category.length > 0) query = query.in("category", filters.category);
   if (filters.priceMin !== null) query = query.gte("price", filters.priceMin);
   if (filters.priceMax !== null) query = query.lte("price", filters.priceMax);
-
   if (filters.silver925Min !== null) query = query.gte("silver_925", filters.silver925Min);
   if (filters.silver925Max !== null) query = query.lte("silver_925", filters.silver925Max);
 
@@ -169,8 +157,6 @@ export async function fetchProducts(
   if (filters.goldWt18kMax !== null) query = query.lte("gold_wt_18k", filters.goldWt18kMax);
 
   if (filters.sizes.length > 0) query = query.in("size", filters.sizes);
-
-  // ── Execute ────────────────────────────────────────────────────────────
 
   const { data: rows, count, error } = await query;
 
@@ -201,7 +187,7 @@ export async function fetchProducts(
     caratMap.set(cr.product_id, existing);
   });
 
-  // Galleries
+  // Galleries (color-tagged)
   const galleryMap = await loadGalleries(productIds);
 
   let products = rows.map((row) =>

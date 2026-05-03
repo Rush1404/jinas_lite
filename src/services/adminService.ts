@@ -8,14 +8,22 @@ import { supabase } from "../lib/supabase";
 import { config } from "../lib/config";
 import { mockProducts } from "../data/products";
 import { getImageUrl } from "../utils/images";
-import type { Product, SubCategory, Category, Gender } from "../types/product";
+import type {
+  Product,
+  GalleryImage,
+  SubCategory,
+  Category,
+  Gender,
+} from "../types/product";
 
 export interface ProductInput {
   sku: string;
   name: string;
   description?: string;
-  image: string;        // primary image URL (kept in sync with images[0])
-  images?: string[];    // gallery URLs (first is primary)
+  /** Primary image URL (kept in sync with gallery[0].url). */
+  image: string;
+  /** Full gallery, in display order. First entry is the primary. */
+  gallery?: GalleryImage[];
   price: number;
   goldWt18k: number;
   goldWt14k: number;
@@ -33,13 +41,15 @@ const isSupabaseConfigured = () =>
   Boolean(config.supabase.url) && Boolean(config.supabase.anonKey);
 
 // ─── Bulk load galleries ────────────────────────────────────────────────────
-async function loadGalleries(productIds: string[]): Promise<Map<string, string[]>> {
-  const map = new Map<string, string[]>();
+async function loadGalleries(
+  productIds: string[]
+): Promise<Map<string, GalleryImage[]>> {
+  const map = new Map<string, GalleryImage[]>();
   if (productIds.length === 0) return map;
 
   const { data, error } = await supabase
     .from("product_images")
-    .select("product_id, image_path, is_primary, sort_order")
+    .select("product_id, image_path, is_primary, sort_order, color")
     .in("product_id", productIds)
     .order("is_primary", { ascending: false })
     .order("sort_order", { ascending: true });
@@ -51,7 +61,10 @@ async function loadGalleries(productIds: string[]): Promise<Map<string, string[]
 
   data?.forEach((r: any) => {
     const existing = map.get(r.product_id) ?? [];
-    existing.push(getImageUrl(r.image_path));
+    existing.push({
+      url: getImageUrl(r.image_path),
+      color: r.color ?? null,
+    });
     map.set(r.product_id, existing);
   });
   return map;
@@ -99,8 +112,7 @@ export async function getProductBySku(sku: string): Promise<Product | null> {
 
 // ─── Create ─────────────────────────────────────────────────────────────────
 export async function createProduct(input: ProductInput): Promise<Product> {
-  // Normalize images: ensure images[0] === image
-  const images = normalizeImages(input);
+  const gallery = normalizeGallery(input);
 
   if (!isSupabaseConfigured()) {
     const newProduct: Product = {
@@ -108,8 +120,8 @@ export async function createProduct(input: ProductInput): Promise<Product> {
       sku: input.sku,
       name: input.name,
       description: input.description ?? "",
-      image: images[0],
-      images,
+      image: gallery[0]?.url ?? "",
+      gallery,
       diamondCaratOptions: [input.selectedCarat],
       selectedCarat: input.selectedCarat,
       goldWt18k: input.goldWt18k,
@@ -133,7 +145,7 @@ export async function createProduct(input: ProductInput): Promise<Product> {
       sku: input.sku.toUpperCase(),
       name: input.name,
       description: input.description ?? "",
-      image_path: images[0],
+      image_path: gallery[0]?.url ?? "",
       default_carat: input.selectedCarat,
       gold_wt_18k: input.goldWt18k,
       gold_wt_14k: input.goldWt14k,
@@ -153,23 +165,24 @@ export async function createProduct(input: ProductInput): Promise<Product> {
 
   // Save full gallery (always — even if just one image, so the gallery
   // table stays the source of truth for the storefront).
-  if (images.length > 0) {
-    const imageRows = images.map((url, i) => ({
+  if (gallery.length > 0) {
+    const imageRows = gallery.map((g, i) => ({
       product_id: data.id,
-      image_path: url,
+      image_path: g.url,
       is_primary: i === 0,
       sort_order: i,
+      color: g.color,
     }));
     const { error: imgErr } = await supabase.from("product_images").insert(imageRows);
     if (imgErr) console.error("Saving gallery failed:", imgErr);
   }
 
-  return rowToProduct(data, images);
+  return rowToProduct(data, gallery);
 }
 
 // ─── Update ─────────────────────────────────────────────────────────────────
 export async function updateProduct(id: string, input: ProductInput): Promise<Product> {
-  const images = normalizeImages(input);
+  const gallery = normalizeGallery(input);
 
   if (!isSupabaseConfigured()) {
     const idx = mockProducts.findIndex((p) => p.id === id);
@@ -179,8 +192,8 @@ export async function updateProduct(id: string, input: ProductInput): Promise<Pr
       sku: input.sku,
       name: input.name,
       description: input.description ?? "",
-      image: images[0],
-      images,
+      image: gallery[0]?.url ?? "",
+      gallery,
       selectedCarat: input.selectedCarat,
       goldWt18k: input.goldWt18k,
       goldWt14k: input.goldWt14k,
@@ -202,7 +215,7 @@ export async function updateProduct(id: string, input: ProductInput): Promise<Pr
       sku: input.sku.toUpperCase(),
       name: input.name,
       description: input.description ?? "",
-      image_path: images[0],
+      image_path: gallery[0]?.url ?? "",
       default_carat: input.selectedCarat,
       gold_wt_18k: input.goldWt18k,
       gold_wt_14k: input.goldWt14k,
@@ -225,50 +238,87 @@ export async function updateProduct(id: string, input: ProductInput): Promise<Pr
   // Replace gallery wholesale: delete all, then re-insert in order.
   // Simple and correct; the gallery is small.
   await supabase.from("product_images").delete().eq("product_id", id);
-  if (images.length > 0) {
-    const imageRows = images.map((url, i) => ({
+  if (gallery.length > 0) {
+    const imageRows = gallery.map((g, i) => ({
       product_id: id,
-      image_path: url,
+      image_path: g.url,
       is_primary: i === 0,
       sort_order: i,
+      color: g.color,
     }));
     const { error: imgErr } = await supabase.from("product_images").insert(imageRows);
     if (imgErr) console.error("Saving gallery failed:", imgErr);
   }
 
-  return rowToProduct(data, images);
+  return rowToProduct(data, gallery);
 }
 
 // ─── Delete ─────────────────────────────────────────────────────────────────
-// Soft delete (sets is_active=false) so we don't break old order references.
+export async function setProductActive(
+  id: string,
+  isActive: boolean
+): Promise<void> {
+  if (!isSupabaseConfigured()) {
+    const idx = mockProducts.findIndex((p) => p.id === id);
+    if (idx !== -1) mockProducts[idx].isActive = isActive;
+    return;
+  }
+ 
+  const { error } = await supabase
+    .from("products")
+    .update({ is_active: isActive, updated_at: new Date().toISOString() })
+    .eq("id", id);
+ 
+  if (error) throw new Error(error.message);
+}
+ 
+/**
+ * Hard-delete a product. Removes the product row and its gallery images.
+ * Will fail (and surface an error) if the product is referenced by
+ * existing orders — protect order history.
+ */
 export async function deleteProduct(id: string): Promise<void> {
   if (!isSupabaseConfigured()) {
     const idx = mockProducts.findIndex((p) => p.id === id);
     if (idx !== -1) mockProducts.splice(idx, 1);
     return;
   }
-
-  const { error } = await supabase
-    .from("products")
-    .update({ is_active: false, updated_at: new Date().toISOString() })
-    .eq("id", id);
-
+ 
+  // Check for order references first so we can give a clean error message
+  // instead of a cryptic foreign-key violation.
+  const { count: orderRefCount, error: refErr } = await supabase
+    .from("order_items")
+    .select("id", { count: "exact", head: true })
+    .eq("product_id", id);
+ 
+  if (refErr) {
+    // If the order_items table doesn't exist or the column is named
+    // differently, swallow this — the actual delete will still surface
+    // a real error if there's a constraint problem.
+    console.warn("Order reference check failed:", refErr.message);
+  } else if ((orderRefCount ?? 0) > 0) {
+    throw new Error(
+      `Can't delete: this product appears in ${orderRefCount} past order${
+        orderRefCount === 1 ? "" : "s"
+      }. Hide it from the storefront instead.`
+    );
+  }
+ 
+  // Drop dependent rows first (in case there's no ON DELETE CASCADE).
+  await supabase.from("product_images").delete().eq("product_id", id);
+  await supabase.from("product_carat_options").delete().eq("product_id", id);
+ 
+  const { error } = await supabase.from("products").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
 
 // ─── Image upload to Supabase Storage ───────────────────────────────────────
-//
-// Returns the public URL of the uploaded file. The `index` parameter
-// disambiguates filenames when uploading multiple images for the same SKU
-// in quick succession (Date.now() alone can collide).
-// ─────────────────────────────────────────────────────────────────────────────
 export async function uploadProductImage(
   file: File,
   sku: string,
   index: number = 0
 ): Promise<string> {
   if (!isSupabaseConfigured()) {
-    // Dev-mode: create a local object URL so the preview works.
     return URL.createObjectURL(file);
   }
 
@@ -289,45 +339,51 @@ export async function uploadProductImage(
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /**
- * Make sure we always have at least one image, that images[0] === image,
- * and that there are no empty entries or duplicates.
+ * Make sure the gallery has at least one image, that gallery[0].url === image,
+ * that there are no empty entries or duplicate URLs, and that color values
+ * are normalized (lowercased, trimmed, empty → null).
  */
-function normalizeImages(input: ProductInput): string[] {
-  const raw = (input.images && input.images.length > 0)
-    ? [...input.images]
-    : (input.image ? [input.image] : []);
+function normalizeGallery(input: ProductInput): GalleryImage[] {
+  const raw: GalleryImage[] = (input.gallery && input.gallery.length > 0)
+    ? input.gallery.map((g) => ({ url: g.url, color: g.color }))
+    : (input.image ? [{ url: input.image, color: null }] : []);
 
   // If a primary `image` is set but isn't already first in the gallery,
-  // hoist it to the front.
-  if (input.image && raw[0] !== input.image) {
-    const without = raw.filter((u) => u !== input.image);
-    raw.length = 0;
-    raw.push(input.image, ...without);
+  // hoist it to the front (preserving its color tag if it had one).
+  if (input.image && raw[0]?.url !== input.image) {
+    const matchIdx = raw.findIndex((g) => g.url === input.image);
+    if (matchIdx > 0) {
+      const [picked] = raw.splice(matchIdx, 1);
+      raw.unshift(picked);
+    } else {
+      raw.unshift({ url: input.image, color: null });
+    }
   }
 
-  // Drop empties and dedupe while preserving order.
   const seen = new Set<string>();
-  const out: string[] = [];
-  for (const url of raw) {
-    const trimmed = (url || "").trim();
-    if (!trimmed || seen.has(trimmed)) continue;
-    seen.add(trimmed);
-    out.push(trimmed);
+  const out: GalleryImage[] = [];
+  for (const g of raw) {
+    const url = (g.url || "").trim();
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    const color = g.color ? g.color.trim().toLowerCase() : null;
+    out.push({ url, color: color || null });
   }
   return out;
 }
 
-function rowToProduct(row: any, gallery: string[] = []): Product {
+function rowToProduct(row: any, gallery: GalleryImage[] = []): Product {
   const primary = getImageUrl(row.image_path);
-  const images = gallery.length > 0 ? gallery : [primary];
+  const finalGallery: GalleryImage[] =
+    gallery.length > 0 ? gallery : [{ url: primary, color: null }];
 
   return {
     id: row.id,
     sku: row.sku,
     name: row.name,
     description: row.description ?? "",
-    image: images[0] ?? primary,
-    images,
+    image: finalGallery[0]?.url ?? primary,
+    gallery: finalGallery,
     diamondCaratOptions: [row.default_carat],
     selectedCarat: row.default_carat,
     goldWt18k: row.gold_wt_18k,

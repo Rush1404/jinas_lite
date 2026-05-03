@@ -909,3 +909,26 @@ body.landing-mode .pdp-page {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
+
+/* ============================================================================
+   Append the rules below to the END of src/styles/shop.css
+   ============================================================================ */
+ 
+/* Rose-gold swatch — extends existing .pdp-swatch-* family */
+.pdp-swatch.swatch-rose-gold::before {
+  background: linear-gradient(135deg, #e8b8a8, #b8806e);
+}
+ 
+/* Generic fallback for any color tag that doesn't have a hand-tuned gradient.
+   The slug ("emerald", "platinum", etc.) becomes the class — these images
+   will just show a neutral gray well rather than no swatch at all. */
+.pdp-swatch[class*="swatch-"]:not(.swatch-gold):not(.swatch-gold-deep):not(.swatch-silver):not(.swatch-rose-gold)::before {
+  background: linear-gradient(135deg, #d8d8d8, #909090);
+}
+ 
+/* Smooth fade hook for the main image when colors swap.
+   The inline style on #pdp-main-image handles the actual transition. */
+#pdp-main-image {
+  transition: opacity 200ms ease-out;
+}
+ 
