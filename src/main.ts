@@ -18,6 +18,7 @@ import {
 import {
   renderCategoryPage,
   renderGenderPage,
+  renderAllJewelryPage,
   initCategoryPageEvents,
 } from "./components/category/CategoryPage.ts";
 import {
@@ -196,6 +197,9 @@ function renderCurrentRoute() {
     case "landing":
       renderLanding();
       break;
+    case "all":
+      renderAll();
+      break;
     case "category":
       renderCategory(route);
       break;
@@ -253,6 +257,16 @@ async function renderGender(route: Extract<Route, { kind: "gender" }>) {
   if (parseRoute().kind !== "gender") return;
 
   mountEditorialShell(renderGenderPage(route.gender, products));
+  initCategoryPageEvents(products);
+}
+
+async function renderAll() {
+  mountEditorialShell(loadingShell());
+  const products = await loadCatalog();
+
+  if (parseRoute().kind !== "all") return;
+
+  mountEditorialShell(renderAllJewelryPage(products));
   initCategoryPageEvents(products);
 }
 

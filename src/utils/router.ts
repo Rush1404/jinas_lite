@@ -2,6 +2,7 @@
 // Tiny typed hash router. All routes live under `#/...`.
 // Supports:
 //   #/                      → landing
+//   #/jewelry               → all jewelry (full catalog)
 //   #/rings                 → rings category
 //   #/earrings              → earrings category
 //   #/bracelets             → bracelets category
@@ -21,6 +22,7 @@ import type { SubCategory, Gender } from "../types/product";
 
 export type Route =
   | { kind: "landing" }
+  | { kind: "all" }
   | { kind: "category"; subCategory: SubCategory }
   | { kind: "gender"; gender: Gender }
   | { kind: "product"; sku: string }
@@ -59,6 +61,7 @@ export function parseRoute(): Route {
   }
   if (first === "login") return { kind: "login" };
   if (first === "account") return { kind: "account" };
+  if (first === "jewelry") return { kind: "all" };
 
   // Admin
   if (first === "admin") {
@@ -91,6 +94,7 @@ export function parseRoute(): Route {
 // ─── URL builders ───────────────────────────────────────────────────────────
 export const routes = {
   landing: () => "#/",
+  all: () => "#/jewelry",
   category: (sub: SubCategory) => {
     const entry = Object.entries(CATEGORY_SLUGS).find(([, v]) => v === sub);
     return entry ? `#/${entry[0]}` : "#/";

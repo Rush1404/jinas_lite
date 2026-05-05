@@ -243,9 +243,16 @@ body.landing-mode .category-page {
   border: 1px solid rgba(0, 0, 0, 0.1);
   display: inline-block;
 }
+
 .swatch-gold       { background: linear-gradient(135deg, #e8c47a, #b8903e); }
 .swatch-gold-deep  { background: linear-gradient(135deg, #d4a04a, #8f6820); }
 .swatch-silver     { background: linear-gradient(135deg, #e8e8e8, #a8a8a8); }
+.swatch-rose-gold  { background: linear-gradient(135deg, #e8b8a8, #b8806e); }
+
+/* Generic fallback for any custom color tag without a hand-tuned gradient */
+.swatch[class*="swatch-"]:not(.swatch-gold):not(.swatch-gold-deep):not(.swatch-silver):not(.swatch-rose-gold) {
+  background: linear-gradient(135deg, #d8d8d8, #909090);
+}
 
 .cat-product-sku {
   font-family: var(--landing-mono);

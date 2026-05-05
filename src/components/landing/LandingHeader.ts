@@ -1,27 +1,157 @@
 // ─── Landing Header ─────────────────────────────────────────────────────────
-// Sticky editorial header reused across the whole site.
-// - Logo centered, nav left, icons right
-// - Live cart count from cartStore
-// - Account icon links to login or account based on auth state
-// - "All Jewelry" link removed (legacy /shop is gone) — replaced with
-//   "Women" / "Men" entry points
+// Sticky editorial header with dropdown navigation.
+//
+// Tabs:
+//   - Women      → dropdown: Rings / Earrings / Bracelets / Pendants
+//   - Men        → dropdown: Rings / Earrings / Bracelets / Pendants
+//   - All Jewelry → direct link to landing
+//   - Collections → dropdown: the seven Category collections
+//
+// Behavior:
+//   - Desktop: hover opens, leaving the trigger+panel area closes (after a
+//     short grace period to allow diagonal mouse travel into the panel)
+//   - Mobile (no hover, narrow viewport): tap to toggle, tap outside to close
+//   - Esc closes any open panel
 // ────────────────────────────────────────────────────────────────────────────
 
 import { routes } from "../../utils/router";
 import { cartStore } from "../../lib/cartStore.ts";
 import { authStore } from "../../lib/authStore.ts";
 
+// ─── Dropdown contents ──────────────────────────────────────────────────────
+
+interface NavLink {
+  label: string;
+  href: string;
+}
+
+interface NavSection {
+  heading: string;
+  links: NavLink[];
+}
+
+// Subcategories for both Women and Men dropdowns. The destination is the
+// same category page; the parent tab is purely an entry point.
+const SUBCATEGORY_LINKS: NavLink[] = [
+  { label: "Rings", href: routes.category("RING") },
+  { label: "Earrings", href: routes.category("EARRING") },
+  { label: "Bracelets", href: routes.category("LOOSE_BRACELET") },
+  { label: "Pendants", href: routes.category("PENDANT") },
+];
+
+const WOMEN_DROPDOWN: NavSection[] = [
+  {
+    heading: "Shop Women",
+    links: [
+      { label: "All Women's", href: routes.gender("WOMEN") },
+      ...SUBCATEGORY_LINKS,
+    ],
+  },
+];
+
+const MEN_DROPDOWN: NavSection[] = [
+  {
+    heading: "Shop Men",
+    links: [
+      { label: "All Men's", href: routes.gender("MEN") },
+      ...SUBCATEGORY_LINKS,
+    ],
+  },
+];
+
+// Collections dropdown — for now each collection link points to the
+// general subcategory pages. Wire real per-collection routing later.
+const COLLECTIONS_DROPDOWN: NavSection[] = [
+  {
+    heading: "Collections",
+    links: [
+      { label: "Eternity", href: routes.category("LOOSE_BRACELET") },
+      { label: "Single Diamond", href: routes.category("RING") },
+      { label: "Two Diamond", href: routes.category("RING") },
+      { label: "Three Diamond", href: routes.category("RING") },
+      { label: "Four Diamond", href: routes.category("RING") },
+      { label: "Half Jacket", href: routes.category("EARRING") },
+      { label: "Full Jacket", href: routes.category("EARRING") },
+    ],
+  },
+];
+
+// ─── Render helpers ─────────────────────────────────────────────────────────
+
+function renderDropdownPanel(id: string, sections: NavSection[]): string {
+  const sectionsHtml = sections
+    .map((section) => {
+      const linksHtml = section.links
+        .map(
+          (link) =>
+            '<a href="' + link.href + '" class="nav-dropdown-link">' + link.label + '</a>'
+        )
+        .join("");
+      return (
+        '<div class="nav-dropdown-section">' +
+          '<p class="nav-dropdown-heading">' + section.heading + '</p>' +
+          '<div class="nav-dropdown-links">' + linksHtml + '</div>' +
+        '</div>'
+      );
+    })
+    .join("");
+
+  return (
+    '<div class="nav-dropdown" id="' + id + '" data-dropdown-panel hidden>' +
+      '<div class="nav-dropdown-inner">' + sectionsHtml + '</div>' +
+    '</div>'
+  );
+}
+
+// ─── Top-level render ───────────────────────────────────────────────────────
+
 export function renderLandingHeader(): string {
   const cartCount = cartStore.itemCount();
   const authed = !!authStore.getState().user;
 
   return `
-    <header class="landing-header">
+    <header class="landing-header" data-nav-root>
       <div class="landing-header-inner">
-        <nav class="landing-nav">
-          <a href="${routes.gender("WOMEN")}" data-nav="women">Women</a>
-          <a href="${routes.gender("MEN")}" data-nav="men">Men</a>
-          <a href="${routes.category("RING")}" data-nav="collections">Collections</a>
+        <nav class="landing-nav" aria-label="Primary">
+          <div class="landing-nav-item" data-nav-item="women">
+            <button
+              class="landing-nav-trigger"
+              type="button"
+              data-nav-trigger="women"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-controls="dropdown-women"
+            >
+              Women
+            </button>
+          </div>
+          <div class="landing-nav-item" data-nav-item="men">
+            <button
+              class="landing-nav-trigger"
+              type="button"
+              data-nav-trigger="men"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-controls="dropdown-men"
+            >
+              Men
+            </button>
+          </div>
+          <div class="landing-nav-item">
+            <a href="${routes.all()}" class="landing-nav-link">All Jewelry</a>
+          </div>
+          <div class="landing-nav-item" data-nav-item="collections">
+            <button
+              class="landing-nav-trigger"
+              type="button"
+              data-nav-trigger="collections"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-controls="dropdown-collections"
+            >
+              Collections
+            </button>
+          </div>
         </nav>
 
         <a href="${routes.landing()}" class="landing-logo">
@@ -47,20 +177,151 @@ export function renderLandingHeader(): string {
           </a>
         </div>
       </div>
+
+      <!-- Dropdown panels — full-width, positioned just below the header -->
+      ${renderDropdownPanel("dropdown-women", WOMEN_DROPDOWN)}
+      ${renderDropdownPanel("dropdown-men", MEN_DROPDOWN)}
+      ${renderDropdownPanel("dropdown-collections", COLLECTIONS_DROPDOWN)}
     </header>
   `;
 }
 
-/**
- * Wire up live cart-count updates. Call after the header is in the DOM.
- * Returns an unsubscribe function for teardown.
- */
+// ─── Wire up live cart-count + dropdown behavior ────────────────────────────
+
 export function initLandingHeader(): () => void {
-  return cartStore.subscribe(() => {
-    const count = cartStore.itemCount();
-    document.querySelectorAll<HTMLElement>("[data-cart-count]").forEach((el) => {
-      el.textContent = String(count);
-      el.style.display = count > 0 ? "" : "none";
+  // 1. Live cart count
+  const updateCount = () => {
+    const node = document.querySelector<HTMLElement>("[data-cart-count]");
+    if (node) node.textContent = String(cartStore.itemCount());
+  };
+  const cartUnsub = cartStore.subscribe(updateCount);
+  updateCount();
+
+  // 2. Dropdown navigation
+  const root = document.querySelector<HTMLElement>("[data-nav-root]");
+  if (!root) return cartUnsub;
+
+  const triggers = Array.from(
+    root.querySelectorAll<HTMLButtonElement>("[data-nav-trigger]")
+  );
+  const panels = Array.from(
+    root.querySelectorAll<HTMLElement>("[data-dropdown-panel]")
+  );
+
+  let activeKey: string | null = null;
+  let closeTimer: number | null = null;
+
+  function panelFor(key: string): HTMLElement | null {
+    return root!.querySelector<HTMLElement>("#dropdown-" + key);
+  }
+  function triggerFor(key: string): HTMLButtonElement | null {
+    return root!.querySelector<HTMLButtonElement>(
+      '[data-nav-trigger="' + key + '"]'
+    );
+  }
+
+  function open(key: string) {
+    if (closeTimer !== null) {
+      window.clearTimeout(closeTimer);
+      closeTimer = null;
+    }
+    if (activeKey === key) return;
+
+    // Close any other open panel first
+    if (activeKey) close(activeKey, true);
+
+    const panel = panelFor(key);
+    const trigger = triggerFor(key);
+    if (!panel || !trigger) return;
+
+    panel.hidden = false;
+    // Force reflow so the transition runs
+    void panel.offsetWidth;
+    panel.classList.add("is-open");
+    trigger.setAttribute("aria-expanded", "true");
+    trigger.classList.add("is-active");
+    activeKey = key;
+  }
+
+  function close(key: string, immediate = false) {
+    const panel = panelFor(key);
+    const trigger = triggerFor(key);
+    if (!panel || !trigger) return;
+
+    panel.classList.remove("is-open");
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.classList.remove("is-active");
+
+    if (immediate) {
+      panel.hidden = true;
+    } else {
+      // Hide after the transition finishes
+      window.setTimeout(() => {
+        if (!panel.classList.contains("is-open")) panel.hidden = true;
+      }, 180);
+    }
+    if (activeKey === key) activeKey = null;
+  }
+
+  function scheduleClose() {
+    if (closeTimer !== null) window.clearTimeout(closeTimer);
+    closeTimer = window.setTimeout(() => {
+      if (activeKey) close(activeKey);
+      closeTimer = null;
+    }, 120);
+  }
+
+  // ── Hover behavior (desktop) ──
+  triggers.forEach((trigger) => {
+    const key = trigger.dataset.navTrigger!;
+    const item = trigger.closest<HTMLElement>("[data-nav-item]");
+    if (!item) return;
+
+    item.addEventListener("mouseenter", () => open(key));
+    item.addEventListener("mouseleave", scheduleClose);
+
+    // Click to toggle (mobile / keyboard)
+    trigger.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (activeKey === key) close(key);
+      else open(key);
     });
   });
+
+  // Keep panel open while hovering it; close when leaving
+  panels.forEach((panel) => {
+    panel.addEventListener("mouseenter", () => {
+      if (closeTimer !== null) {
+        window.clearTimeout(closeTimer);
+        closeTimer = null;
+      }
+    });
+    panel.addEventListener("mouseleave", scheduleClose);
+
+    // Clicking any link in the panel navigates and closes
+    panel.addEventListener("click", (e) => {
+      const link = (e.target as HTMLElement).closest<HTMLAnchorElement>("a");
+      if (link && activeKey) close(activeKey, true);
+    });
+  });
+
+  // ── Outside click + Esc ──
+  function onDocClick(e: MouseEvent) {
+    if (!activeKey) return;
+    const target = e.target as HTMLElement;
+    if (!root!.contains(target)) close(activeKey, true);
+  }
+  function onKey(e: KeyboardEvent) {
+    if (e.key === "Escape" && activeKey) close(activeKey, true);
+  }
+  document.addEventListener("click", onDocClick);
+  document.addEventListener("keydown", onKey);
+
+  // ── Cleanup ──
+  return () => {
+    cartUnsub();
+    document.removeEventListener("click", onDocClick);
+    document.removeEventListener("keydown", onKey);
+    if (closeTimer !== null) window.clearTimeout(closeTimer);
+  };
 }

@@ -6,7 +6,7 @@
 // Visual language matches the editorial landing page.
 // ────────────────────────────────────────────────────────────────────────────
 
-import type { Product, SubCategory, Gender } from "../../types/product";
+import { type Product, type SubCategory, type Gender, availableColors } from "../../types/product";
 import { formatCurrency } from "../../utils/filters";
 import { routes, categoryLabel, genderLabel } from "../../utils/router";
 import { cartStore } from "../../lib/cartStore.ts";
@@ -82,8 +82,60 @@ const PROMO_BY_GENDER: Record<Gender, PromoTile> = {
   },
 };
 
+// ─── Card swatches (derived from gallery color tags) ────────────────────────
+
+// Map a color tag (e.g. "rose gold") to the CSS swatch class used on cards.
+function cardSwatchClass(color: string): string {
+  const slug = color.toLowerCase().replace(/\s+/g, "-");
+  switch (slug) {
+    case "gold":
+    case "yellow-gold":
+      return "swatch-gold";
+    case "gold-deep":
+      return "swatch-gold-deep";
+    case "silver":
+    case "white-gold":
+      return "swatch-silver";
+    case "rose-gold":
+      return "swatch-rose-gold";
+    default:
+      return "swatch-" + slug;
+  }
+}
+
+// Pretty label for the swatch's tooltip ("rose gold" → "Rose Gold").
+function cardSwatchLabel(color: string): string {
+  return color
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+// Builds the swatch row HTML using plain string concatenation so the
+// main renderCard template literal stays flat (no nested backticks).
+function renderCardSwatches(colors: string[]): string {
+  if (colors.length === 0) {
+    // Empty span keeps space-between layout intact so SKU stays right-aligned.
+    return '<span></span>';
+  }
+  const dots = colors
+    .map(
+      (c) =>
+        '<span class="swatch ' +
+        cardSwatchClass(c) +
+        '" title="' +
+        cardSwatchLabel(c) +
+        '"></span>'
+    )
+    .join("");
+  return '<div class="cat-swatches" aria-label="Available colors">' + dots + '</div>';
+}
+
 // ─── Product Card ───────────────────────────────────────────────────────────
 function renderCard(product: Product): string {
+  const colors = product.gallery ? availableColors(product.gallery) : [];
+  const swatchesHtml = renderCardSwatches(colors);
+
   return `
     <a
       href="${routes.product(product.sku)}"
@@ -105,10 +157,7 @@ function renderCard(product: Product): string {
           <span class="cat-product-price">${formatCurrency(product.price)}</span>
         </div>
         <div class="cat-product-meta">
-          <div class="cat-swatches" aria-label="Available metals">
-            <span class="swatch swatch-gold" title="18k gold vermeil"></span>
-            <span class="swatch swatch-silver" title="Silver 925"></span>
-          </div>
+          ${swatchesHtml}
           <span class="cat-product-sku">${product.sku}</span>
         </div>
       </div>
@@ -168,6 +217,19 @@ export function renderGenderPage(
     promo,
   });
 }
+
+// ─── Render: all jewelry ────────────────────────────────────────────────────
+export function renderAllJewelryPage(products: Product[]): string {
+  const filtered = products.filter((p) => p.isActive !== false);
+
+  return renderGrid({
+    title: "All Jewelry",
+    breadcrumbCurrent: "All Jewelry",
+    products: filtered,
+    promo: PROMO_BY_CATEGORY.ALL,
+  });
+}
+
 
 // ─── Shared grid rendering ──────────────────────────────────────────────────
 function renderGrid(opts: {
