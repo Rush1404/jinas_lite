@@ -559,3 +559,416 @@ textarea.admin-input {
   outline: 2px solid var(--ink);
   outline-offset: 1px;
 }
+
+/* ============================================================================
+   ADMIN — FEATURED PRODUCTS PANEL
+   ----------------------------------------------------------------------------
+   APPEND to src/styles/admin.css. Provides the layout for the "Featured edit"
+   panel above the products table on the admin list page, plus the picker
+   overlay that opens when an empty slot is clicked.
+   ============================================================================ */
+
+/* ── Panel wrapper ────────────────────────────────────────────────────── */
+.featured-panel {
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  padding: clamp(20px, 3vw, 32px);
+  margin-bottom: 32px;
+}
+
+.featured-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.featured-panel-title {
+  font-family: var(--landing-display);
+  font-size: clamp(22px, 2.5vw, 28px);
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: 4px 0 8px;
+  line-height: 1;
+}
+
+.featured-panel-hint {
+  font-family: var(--landing-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--graphite);
+  max-width: 60ch;
+  margin: 0;
+}
+.featured-panel-hint em {
+  color: var(--ink);
+  font-style: italic;
+}
+
+.featured-panel-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  font-family: var(--landing-mono);
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.featured-panel-count {
+  color: var(--ink);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+}
+.featured-panel-warning {
+  color: var(--moss);
+  text-transform: none;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+  text-align: right;
+  max-width: 28ch;
+  white-space: normal;
+  line-height: 1.4;
+}
+
+/* ── Slot strip ───────────────────────────────────────────────────────── */
+.featured-slots {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .featured-slots { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 560px) {
+  .featured-slots { grid-template-columns: repeat(2, 1fr); }
+}
+
+.featured-slot {
+  position: relative;
+  aspect-ratio: 1;
+  background: var(--bone);
+  border: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font: inherit;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+  transition: border-color 200ms var(--l-ease), transform 200ms var(--l-ease);
+}
+.featured-slot:hover {
+  border-color: var(--graphite);
+}
+
+.featured-slot.is-dragging {
+  opacity: 0.4;
+  transform: scale(0.98);
+}
+.featured-slot.is-drop-target {
+  border-color: var(--ink);
+  border-style: dashed;
+}
+
+.featured-slot-pos {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-family: var(--landing-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--smoke);
+  background: rgba(244, 241, 236, 0.92);
+  backdrop-filter: blur(4px);
+  padding: 3px 7px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Filled tile — image + meta + remove button */
+.featured-slot-filled {
+  cursor: grab;
+}
+.featured-slot-filled:active { cursor: grabbing; }
+
+.featured-slot-image {
+  flex: 1;
+  background: var(--paper);
+  overflow: hidden;
+  pointer-events: none; /* let drag events go through to the tile */
+}
+.featured-slot-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.featured-slot-info {
+  padding: 8px 10px 10px;
+  background: var(--bone);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--hairline);
+  pointer-events: none;
+}
+.featured-slot-name {
+  font-family: var(--landing-display);
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.2;
+  /* Single line ellipsis — tiles are tight */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.featured-slot-sku {
+  font-family: var(--landing-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--smoke);
+  text-transform: uppercase;
+}
+
+.featured-slot-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--hairline);
+  background: rgba(244, 241, 236, 0.95);
+  backdrop-filter: blur(4px);
+  color: var(--graphite);
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 3;
+  transition: background 200ms, color 200ms, border-color 200ms;
+}
+.featured-slot-remove:hover {
+  background: var(--ink);
+  color: var(--bone);
+  border-color: var(--ink);
+}
+
+/* Empty "+" tile */
+.featured-slot-empty {
+  border-style: dashed;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--smoke);
+  transition: background 200ms, color 200ms, border-color 200ms;
+}
+.featured-slot-empty:hover {
+  background: var(--bone);
+  color: var(--ink);
+  border-color: var(--ink);
+}
+.featured-slot-plus {
+  font-size: 28px;
+  font-weight: 300;
+  line-height: 1;
+}
+.featured-slot-empty-label {
+  font-family: var(--landing-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+/* ── Picker overlay ───────────────────────────────────────────────────── */
+.featured-picker {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 4vw, 48px);
+  opacity: 0;
+  transition: opacity 200ms var(--l-ease);
+}
+.featured-picker.is-open { opacity: 1; }
+.featured-picker[hidden] { display: none; }
+
+.featured-picker-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 20, 20, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.featured-picker-card {
+  position: relative;
+  background: var(--bone);
+  border: 1px solid var(--hairline);
+  width: min(640px, 100%);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+}
+
+.featured-picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px 28px 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+.featured-picker-header h3 {
+  font-family: var(--landing-display);
+  font-size: 22px;
+  font-weight: 300;
+  margin: 0 0 4px;
+  color: var(--ink);
+}
+.featured-picker-sub {
+  font-family: var(--landing-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--smoke);
+  margin: 0;
+}
+
+.featured-picker-close {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--hairline);
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--graphite);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms, color 150ms;
+}
+.featured-picker-close:hover {
+  background: var(--ink);
+  color: var(--bone);
+  border-color: var(--ink);
+}
+
+.featured-picker-search {
+  margin: 16px 28px 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--hairline);
+  background: var(--paper);
+  font-family: var(--landing-mono);
+  font-size: 12px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 150ms;
+}
+.featured-picker-search:focus { border-color: var(--ink); }
+
+.featured-picker-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.featured-picker-row {
+  display: grid;
+  grid-template-columns: 48px 1fr auto auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 12px 8px 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms;
+}
+.featured-picker-row:hover:not([disabled]) {
+  background: var(--paper);
+  border-color: var(--hairline);
+}
+.featured-picker-row[disabled] {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.featured-picker-row.is-featured {
+  opacity: 0.55;
+}
+
+.featured-picker-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+}
+
+.featured-picker-name {
+  font-family: var(--landing-display);
+  font-size: 15px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.featured-picker-sku {
+  font-family: var(--landing-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--smoke);
+  text-transform: uppercase;
+}
+
+.featured-picker-price {
+  font-family: var(--landing-mono);
+  font-size: 12px;
+  color: var(--graphite);
+  white-space: nowrap;
+}
+
+.featured-picker-state {
+  font-family: var(--landing-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink);
+  padding: 4px 8px;
+  border: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+.featured-picker-row.is-featured .featured-picker-state {
+  color: var(--moss);
+  border-color: var(--moss);
+}
+.featured-picker-row[disabled] .featured-picker-state {
+  color: var(--smoke);
+  border-color: var(--hairline);
+}
+
+.featured-picker-empty {
+  font-family: var(--landing-mono);
+  font-size: 12px;
+  color: var(--smoke);
+  text-align: center;
+  padding: 32px 0;
+}

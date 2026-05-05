@@ -11,6 +11,10 @@ import { formatCurrency } from "../../utils/filters";
 import { routes, categoryLabel, genderLabel } from "../../utils/router";
 import { cartStore } from "../../lib/cartStore.ts";
 import { productToCartItem } from "../../types/cart.ts";
+import {
+  renderCategoryFilterBar,
+  mountCategoryFilters,
+} from "./CategoryFilters";
 
 interface PromoTile {
   headline: string;
@@ -84,7 +88,6 @@ const PROMO_BY_GENDER: Record<Gender, PromoTile> = {
 
 // ─── Card swatches (derived from gallery color tags) ────────────────────────
 
-// Map a color tag (e.g. "rose gold") to the CSS swatch class used on cards.
 function cardSwatchClass(color: string): string {
   const slug = color.toLowerCase().replace(/\s+/g, "-");
   switch (slug) {
@@ -103,7 +106,6 @@ function cardSwatchClass(color: string): string {
   }
 }
 
-// Pretty label for the swatch's tooltip ("rose gold" → "Rose Gold").
 function cardSwatchLabel(color: string): string {
   return color
     .split(/\s+/)
@@ -111,11 +113,8 @@ function cardSwatchLabel(color: string): string {
     .join(" ");
 }
 
-// Builds the swatch row HTML using plain string concatenation so the
-// main renderCard template literal stays flat (no nested backticks).
 function renderCardSwatches(colors: string[]): string {
   if (colors.length === 0) {
-    // Empty span keeps space-between layout intact so SKU stays right-aligned.
     return '<span></span>';
   }
   const dots = colors
@@ -132,6 +131,12 @@ function renderCardSwatches(colors: string[]): string {
 }
 
 // ─── Product Card ───────────────────────────────────────────────────────────
+//
+// Note: cards intentionally do NOT carry `data-reveal`. The scroll-reveal
+// IntersectionObserver runs once at page mount; cards re-rendered inside
+// the filter callback would never receive their `.in` class and would
+// stay stuck at opacity:0. Keeping cards visible by default makes
+// filter changes feel snappy rather than fading in.
 function renderCard(product: Product): string {
   const colors = product.gallery ? availableColors(product.gallery) : [];
   const swatchesHtml = renderCardSwatches(colors);
@@ -140,7 +145,6 @@ function renderCard(product: Product): string {
     <a
       href="${routes.product(product.sku)}"
       class="cat-product-card"
-      data-reveal
       data-product-cursor
       data-sku="${product.sku}"
     >
@@ -165,24 +169,27 @@ function renderCard(product: Product): string {
   `;
 }
 
-function renderFilterBar(productCount: number): string {
-  return `
-    <div class="cat-filter-bar">
-      <div class="cat-filter-options">
-        <button class="cat-filter-trigger" data-filter="material">Material</button>
-        <button class="cat-filter-trigger" data-filter="stone">Stone</button>
-        <button class="cat-filter-trigger" data-filter="carat">Carat</button>
-        <button class="cat-filter-trigger cat-filter-all" data-filter="all">All Filters</button>
+// ─── Grid + empty state ─────────────────────────────────────────────────────
+
+function renderGridInner(products: Product[]): string {
+  if (products.length === 0) {
+    return `
+      <div class="cat-empty">
+        <p>No pieces match those filters.</p>
       </div>
-      <div class="cat-filter-meta">
-        <span class="cat-product-count">(${productCount} ${productCount === 1 ? "Piece" : "Pieces"})</span>
-        <button class="cat-sort-trigger" data-sort>Sort</button>
-      </div>
-    </div>
-  `;
+    `;
+  }
+  return `<div class="cat-grid">${products.map(renderCard).join("")}</div>`;
 }
 
 // ─── Render: by subcategory ─────────────────────────────────────────────────
+//
+// The renderers stash their filtered product set in `lastPageProducts` so
+// `initCategoryPageEvents` can pick it up after the DOM is mounted. This
+// avoids re-deriving the route filter from the URL (which would couple
+// the filter module to the router's slug format).
+let lastPageProducts: Product[] = [];
+
 export function renderCategoryPage(
   subCategory: SubCategory,
   products: Product[]
@@ -190,9 +197,10 @@ export function renderCategoryPage(
   const filtered = products.filter(
     (p) => p.subCategory === subCategory && p.isActive !== false
   );
+  lastPageProducts = filtered;
   const promo = PROMO_BY_CATEGORY[subCategory];
 
-  return renderGrid({
+  return renderShell({
     title: categoryLabel(subCategory),
     breadcrumbCurrent: categoryLabel(subCategory),
     products: filtered,
@@ -208,9 +216,10 @@ export function renderGenderPage(
   const filtered = products.filter(
     (p) => (p.gender ?? "WOMEN") === gender && p.isActive !== false
   );
+  lastPageProducts = filtered;
   const promo = PROMO_BY_GENDER[gender];
 
-  return renderGrid({
+  return renderShell({
     title: genderLabel(gender),
     breadcrumbCurrent: genderLabel(gender),
     products: filtered,
@@ -221,8 +230,9 @@ export function renderGenderPage(
 // ─── Render: all jewelry ────────────────────────────────────────────────────
 export function renderAllJewelryPage(products: Product[]): string {
   const filtered = products.filter((p) => p.isActive !== false);
+  lastPageProducts = filtered;
 
-  return renderGrid({
+  return renderShell({
     title: "All Jewelry",
     breadcrumbCurrent: "All Jewelry",
     products: filtered,
@@ -230,23 +240,21 @@ export function renderAllJewelryPage(products: Product[]): string {
   });
 }
 
-
-// ─── Shared grid rendering ──────────────────────────────────────────────────
-function renderGrid(opts: {
+// ─── Shared shell ───────────────────────────────────────────────────────────
+//
+// Renders the page chrome (header + filter bar + grid). The grid lives
+// inside a `[data-cat-grid-wrap]` container so the filter callback can
+// re-populate it without re-rendering the bar.
+function renderShell(opts: {
   title: string;
   breadcrumbCurrent: string;
   products: Product[];
   promo: PromoTile;
 }): string {
-  const { title, breadcrumbCurrent, products, promo } = opts;
-
-  const itemsHtml: string[] = [];
-  products.forEach((p, i) => {
-    itemsHtml.push(renderCard(p));
-  });
+  const { title, breadcrumbCurrent, products } = opts;
 
   return `
-    <section class="category-page">
+    <section class="category-page" data-cat-page>
       <header class="cat-page-header">
         <nav class="cat-breadcrumb" aria-label="Breadcrumb">
           <a href="${routes.landing()}">Home</a>
@@ -259,26 +267,54 @@ function renderGrid(opts: {
             ${title}
           </h1>
           <p class="cat-page-intro" data-reveal>
-            Lab-grown, built to last — ${products.length} ${products.length === 1 ? "piece" : "pieces"} in the current edit.
+            Lab-grown, built to last — <span data-cat-intro-count>${products.length} ${products.length === 1 ? "piece" : "pieces"}</span> in the current edit.
           </p>
         </div>
       </header>
 
-      ${renderFilterBar(products.length)}
+      ${renderCategoryFilterBar(products.length)}
 
-      ${
-        products.length === 0
-          ? `<div class="cat-empty"><p>No pieces yet — check back soon.</p></div>`
-          : `<div class="cat-grid">${itemsHtml.join("")}</div>`
-      }
+      <div class="cat-grid-wrap" data-cat-grid-wrap>
+        ${renderGridInner(products)}
+      </div>
     </section>
   `;
 }
 
 // ─── Events ─────────────────────────────────────────────────────────────────
+
+let teardownFilters: (() => void) | null = null;
+
 export function initCategoryPageEvents(allProducts: Product[]) {
+  // The renderer stashed the route-filtered set on `lastPageProducts`
+  // (e.g. "all rings" or "all women's"). The filter module narrows
+  // *within* that set — sort/material/colour/price never expand the
+  // page beyond its primary filter.
+  const pageProducts = lastPageProducts;
+
   // Quick-add from category cards
   document.addEventListener("click", quickAddHandler);
+
+  // Mount filters
+  if (teardownFilters) teardownFilters();
+  teardownFilters = mountCategoryFilters(pageProducts, (filtered) => {
+    // Re-render grid
+    const wrap = document.querySelector<HTMLElement>("[data-cat-grid-wrap]");
+    if (wrap) wrap.innerHTML = renderGridInner(filtered);
+
+    // Update count in the filter bar + intro paragraph
+    const countEl = document.querySelector<HTMLElement>(".cat-product-count");
+    if (countEl) {
+      countEl.textContent = `(${filtered.length} ${filtered.length === 1 ? "Piece" : "Pieces"})`;
+    }
+    const introCount = document.querySelector<HTMLElement>("[data-cat-intro-count]");
+    if (introCount) {
+      introCount.textContent = `${filtered.length} ${filtered.length === 1 ? "piece" : "pieces"}`;
+    }
+  });
+
+  // Initial render: the filter module starts with sort=match + full
+  // price range (identity), so the grid is already in sync with the bar.
 
   function quickAddHandler(e: Event) {
     const target = e.target as HTMLElement;

@@ -40,6 +40,21 @@ export interface Product {
   size: number;
   gender?: Gender;
   isActive?: boolean;
+
+  /**
+   * Material slugs the piece is offered in. Used by the category-page
+   * Material filter. Allowed slugs (matching the customer-facing labels):
+   *   - "10k-gold"        → 10k Gold
+   *   - "10k-white-gold"  → 10k White Gold
+   *   - "10k-rose-gold"   → 10k Rose Gold
+   *   - "14k-gold"        → 14k Gold
+   *   - "14k-white-gold"  → 14k White Gold
+   *   - "14k-rose-gold"   → 14k Rose Gold
+   *
+   * Optional — products without this field simply won't match any
+   * material filter selection until Jina tags them in the admin panel.
+   */
+  materials?: string[];
 }
 
 /**

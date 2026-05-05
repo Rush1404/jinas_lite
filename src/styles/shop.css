@@ -122,6 +122,8 @@ body.landing-mode .category-page {
   text-transform: inherit;
 }
 
+
+
 /* ── Grid ───────────────────────────────────────────────────────────────── */
 .cat-grid {
     display: grid;
@@ -939,3 +941,353 @@ body.landing-mode .pdp-page {
   transition: opacity 200ms ease-out;
 }
  
+/* ============================================================================
+   CATEGORY FILTER BAR — extensions
+   ----------------------------------------------------------------------------
+   APPEND to src/styles/shop.css (after the existing `.cat-filter-bar` rules).
+   These rules add the popover panels, pill counts, and the dual-handle
+   price slider used by the new filtering UI.
+   ============================================================================ */
+
+/* The bar already has position: sticky in shop.css — we layer popovers
+   on top by giving the bar a relative positioning context. */
+.cat-filter-bar {
+  position: sticky;
+  /* (existing rules stay) */
+}
+
+/* Allow popovers to anchor to the bar */
+.cat-filter-bar[data-cat-filters] {
+  position: sticky;
+}
+
+/* ── Filter triggers (refined) ────────────────────────────────────────────
+   The original .cat-filter-trigger was a plain text button. Add a
+   label/value/chev layout so the trigger can show the current sort name
+   or an active-count pill. */
+
+.cat-filter-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  /* color/font/spacing inherited from the existing rule */
+}
+
+.cat-filter-trigger[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.cat-trigger-label {
+  /* The base "Sort By" / "Material" / "Colour" / "Price" label */
+  color: inherit;
+}
+
+.cat-trigger-value {
+  /* The current sort label, e.g. "Top Match" */
+  color: var(--ink);
+  letter-spacing: 0.1em;
+  font-weight: 500;
+  text-transform: none;
+  padding-left: 2px;
+}
+
+.cat-trigger-chev {
+  display: inline-block;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--smoke);
+  transform: translateY(-1px);
+  transition: transform 200ms var(--l-ease), color 200ms;
+}
+
+.cat-filter-trigger.is-open .cat-trigger-chev {
+  transform: translateY(-1px) rotate(180deg);
+  color: var(--ink);
+}
+
+.cat-filter-trigger.is-open,
+.cat-filter-trigger.is-active {
+  color: var(--ink);
+}
+
+.cat-trigger-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bone);
+  font-family: var(--landing-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* Clear-all button */
+.cat-clear-all {
+  font-family: var(--landing-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--moss);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 8px 0;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+  transition: color 200ms;
+  margin-left: 4px;
+}
+.cat-clear-all:hover { color: var(--ink); }
+
+/* ── Popover panels ───────────────────────────────────────────────────────
+   Anchored to the filter bar; drop down beneath it. */
+
+.cat-popover {
+  position: absolute;
+  top: calc(100% + 1px); /* sit just below the bar's bottom border */
+  left: var(--gutter);
+  z-index: 60;
+  min-width: 220px;
+  max-width: 320px;
+  background: var(--bone);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.06);
+  padding: 14px 0;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 180ms var(--l-ease), transform 180ms var(--l-ease);
+  pointer-events: none;
+}
+.cat-popover.is-open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.cat-popover[hidden] { display: none; }
+
+.cat-popover-wide {
+  min-width: 360px;
+  padding: 24px 24px 20px;
+}
+
+.cat-popover-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cat-popover-empty {
+  font-family: var(--landing-mono);
+  font-size: 12px;
+  color: var(--smoke);
+  padding: 8px 20px;
+  margin: 0;
+}
+
+.cat-popover-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 20px;
+  cursor: pointer;
+  font-family: var(--landing-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--graphite);
+  transition: background 150ms, color 150ms;
+}
+.cat-popover-option:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+.cat-popover-option.is-checked {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* Custom checkbox + radio — keep the controls minimal so they read more
+   like a checklist than a form. */
+.cat-popover-option input[type="checkbox"],
+.cat-popover-option input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--hairline);
+  background: transparent;
+  margin: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  transition: border-color 150ms, background 150ms;
+}
+.cat-popover-option input[type="radio"] {
+  border-radius: 50%;
+}
+.cat-popover-option:hover input[type="checkbox"],
+.cat-popover-option:hover input[type="radio"] {
+  border-color: var(--graphite);
+}
+.cat-popover-option input[type="checkbox"]:checked,
+.cat-popover-option input[type="radio"]:checked {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+.cat-popover-option input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23f4f1ec' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='2.5 6.5 5 9 9.5 3.5'/></svg>");
+  background-size: 12px 12px;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+.cat-popover-option input[type="radio"]:checked::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  background: var(--bone);
+  border-radius: 50%;
+}
+
+/* Inline colour swatch inside the colour popover */
+.cat-popover-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+/* ── Price slider ─────────────────────────────────────────────────────────
+   Two range inputs stacked over a shared track. The .cat-price-track-fill
+   div is positioned by JS to highlight the selected window. */
+
+.cat-price-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  font-family: var(--landing-mono);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.cat-price-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+}
+.cat-price-sep { color: var(--smoke); }
+
+.cat-price-track-wrap {
+  position: relative;
+  height: 28px;
+  display: flex;
+  align-items: center;
+}
+
+.cat-price-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--hairline);
+  border-radius: 1px;
+}
+
+.cat-price-track-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--ink);
+  border-radius: 1px;
+}
+
+/* Two stacked native range inputs — make the tracks invisible so only
+   the thumbs show, layered on the shared track above. */
+.cat-price-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  pointer-events: none; /* let the thumbs catch events; tracks are passthrough */
+  margin: 0;
+  height: 28px;
+}
+.cat-price-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bone);
+  border: 1px solid var(--ink);
+  cursor: grab;
+  pointer-events: auto;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  transition: transform 150ms;
+}
+.cat-price-input::-webkit-slider-thumb:hover { transform: scale(1.1); }
+.cat-price-input::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.05); }
+.cat-price-input::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bone);
+  border: 1px solid var(--ink);
+  cursor: grab;
+  pointer-events: auto;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+.cat-price-input::-webkit-slider-runnable-track,
+.cat-price-input::-moz-range-track {
+  background: transparent;
+  border: 0;
+  height: 2px;
+}
+
+/* The min input sits behind the max input; without z-index trickery the
+   max thumb would block the min thumb whenever they overlap at the high
+   end of the track. Promote min to the top when it's near the right. */
+.cat-price-input-min { z-index: 2; }
+.cat-price-input-max { z-index: 1; }
+
+.cat-price-bounds {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--smoke);
+}
+
+/* ── Mobile tweaks ────────────────────────────────────────────────────────
+   On narrow screens the bar already wraps (existing media query in
+   shop.css). Make sure popovers stay readable when the bar stacks. */
+
+@media (max-width: 960px) {
+  .cat-popover {
+    left: var(--gutter);
+    right: var(--gutter);
+    min-width: 0;
+    max-width: none;
+  }
+  .cat-trigger-value {
+    display: none; /* keep the bar compact on mobile */
+  }
+}

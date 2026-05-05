@@ -3,6 +3,12 @@
 // Call `renderLandingPage()` to get the HTML string, then `initLandingPage()`
 // once the DOM is in place to wire up the cursor, scroll-reveal, and forms.
 //
+// The "featured products" strip is now backed by the live catalog plus
+// admin-curated picks (see services/featuredService.ts), so this function
+// needs the resolved product list passed in. If the catalog hasn't loaded
+// yet, pass `[]` — the featured section will simply be omitted until the
+// next render.
+//
 // Note: the standalone "Two collections, one philosophy" gender strip has been
 // removed — Men now lives inside the main category strip as the fifth tile.
 // ────────────────────────────────────────────────────────────────────────────
@@ -18,8 +24,9 @@ import { renderLandingFooter, initFooterEvents } from "./LandingFooter";
 
 import { initCustomCursor } from "../../utils/cursor";
 import { initScrollReveal } from "../../utils/reveal";
+import type { Product } from "../../types/product";
 
-export function renderLandingPage(): string {
+export function renderLandingPage(allProducts: Product[] = []): string {
   return `
     ${renderAnnounceBar()}
     ${renderLandingHeader()}
@@ -27,7 +34,7 @@ export function renderLandingPage(): string {
       ${renderHero()}
       ${renderCategoryStrip()}
       ${renderManifesto()}
-      ${renderFeaturedProducts()}
+      ${renderFeaturedProducts(allProducts)}
       ${renderSplitFeature()}
     </main>
     ${renderLandingFooter()}

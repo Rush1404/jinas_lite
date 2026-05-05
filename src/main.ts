@@ -14,6 +14,8 @@ import {
   cleanupLandingPage,
 } from "./components/landing/LandingPage.ts";
 
+import { refreshFeaturedProducts } from "./components/landing/FeaturedProducts.ts";
+
 // Category + product
 import {
   renderCategoryPage,
@@ -78,6 +80,7 @@ import { parseRoute, onRouteChange, type Route } from "./utils/router.ts";
 import { config } from "./lib/config.ts";
 import { fetchAllActiveProducts } from "./services/productServices.ts";
 import type { Product } from "./types/product.ts";
+
 
 // ─── State ──────────────────────────────────────────────────────────────────
 let cursorHandle: { destroy: () => void } | null = null;
@@ -233,9 +236,20 @@ function renderCurrentRoute() {
 // ─── Routes ─────────────────────────────────────────────────────────────────
 function renderLanding() {
   document.body.classList.add("landing-mode");
-  app.innerHTML = renderLandingPage();
+
+  // Render synchronously with an empty catalog so the hero paints
+  // immediately. The featured section is just a `[data-featured-mount]`
+  // placeholder at this point.
+  app.innerHTML = renderLandingPage([]);
   initLandingPage();
   cartHeaderUnsub = initLandingHeader();
+
+  // Upgrade the featured section once the catalog resolves. Re-check
+  // the route afterwards in case the user navigated away mid-fetch.
+  loadCatalog().then((products) => {
+    if (parseRoute().kind !== "landing") return;
+    refreshFeaturedProducts(products);
+  });
 }
 
 async function renderCategory(route: Extract<Route, { kind: "category" }>) {
