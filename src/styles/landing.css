@@ -577,7 +577,7 @@ body.cursor-view .cursor-ring::after {
   position: relative;
 }
 .manifesto::before {
-  content: '02 / 05';
+  content: '';
   position: absolute;
   top: 40px; right: var(--gutter);
   font-family: var(--landing-mono);
@@ -1155,5 +1155,55 @@ body.landing-mode.cursor-disabled .landing-nav-link {
   }
   .nav-dropdown-link {
     font-size: 18px;
+  }
+}
+
+/* ==========================================================================
+   CATEGORY STRIP — MOBILE: TEXT-LED ROWS
+   ----------------------------------------------------------------------------
+   Still one column / stacked vertically, but each row is a short, fixed-
+   height strip: small image thumbnail + label/arrow doing the visual work.
+   Replaces the full-bleed photo-card treatment used on desktop/tablet.
+   ========================================================================== */
+@media (max-width: 560px) {
+  .cat-card {
+    aspect-ratio: unset;
+    display: grid;
+    grid-template-columns: 76px 1fr;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: 16px;
+    padding: 16px 20px;
+  }
+  .cat-card::after {
+    display: none; /* no dark gradient needed once the photo is a thumbnail */
+  }
+  .cat-num {
+    display: none; /* de-emphasize — label + arrow carry the row now */
+  }
+  .cat-card img {
+    position: static;
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    width: 76px;
+    height: 76px;
+    object-fit: cover;
+    filter: none;
+  }
+  .cat-label {
+    position: static;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: end;
+    color: var(--ink);
+    font-size: 20px;
+  }
+  .cat-arrow {
+    position: static;
+    grid-column: 2;
+    grid-row: 2;
+    align-self: start;
+    margin-top: 4px;
+    color: var(--smoke);
   }
 }

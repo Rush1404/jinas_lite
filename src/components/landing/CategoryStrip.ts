@@ -36,7 +36,6 @@ export function renderCategoryStrip(): string {
         </h2>
         <div class="strip-meta" data-reveal>
           Shop by category
-          <span>01 / 04 — The Edit</span>
         </div>
       </div>
 

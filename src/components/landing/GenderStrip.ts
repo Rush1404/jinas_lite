@@ -39,7 +39,6 @@ export function renderGenderStrip(): string {
         </h2>
         <div class="strip-meta" data-reveal>
           Shop by who it's for
-          <span>02 / 05 — The Edit</span>
         </div>
       </div>
 
