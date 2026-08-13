@@ -30,7 +30,7 @@ import {
 } from "./components/product/ProductPage.ts";
 
 // Shared chrome
-import { renderAnnounceBar } from "./components/landing/AnnounceBar.ts";
+
 import {
   renderLandingHeader,
   initLandingHeader,
@@ -166,7 +166,6 @@ function teardown() {
 function mountEditorialShell(mainHtml: string) {
   document.body.classList.add("landing-mode");
   app.innerHTML = `
-    ${renderAnnounceBar()}
     ${renderLandingHeader()}
     <main class="landing-main">
       ${mainHtml}

@@ -13,7 +13,7 @@
 // removed — Men now lives inside the main category strip as the fifth tile.
 // ────────────────────────────────────────────────────────────────────────────
 
-import { renderAnnounceBar } from "./AnnounceBar";
+
 import { renderLandingHeader } from "./LandingHeader";
 import { renderHero } from "./Hero";
 import { renderCategoryStrip } from "./CategoryStrip";
@@ -28,7 +28,6 @@ import type { Product } from "../../types/product";
 
 export function renderLandingPage(allProducts: Product[] = []): string {
   return `
-    ${renderAnnounceBar()}
     ${renderLandingHeader()}
     <main class="landing-main">
       ${renderHero()}

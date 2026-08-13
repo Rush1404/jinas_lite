@@ -3,6 +3,8 @@
 // on the right. Modeled after the "Puzzle" block on Mejuri.
 // ────────────────────────────────────────────────────────────────────────────
 
+import collection_img from "../../../public/collections.jpg"; 
+
 export interface SplitConfig {
   kicker: string;
   titleHtml: string;
@@ -18,7 +20,7 @@ const defaultConfig: SplitConfig = {
     "Twelve pieces exploring how far a single line can travel. Each one designed to stack, layer, and grow with you without ever competing for attention.",
   cta: { label: "Shop the collection", href: "#" },
   image: {
-    src: "https://images.unsplash.com/photo-1633934542430-0905ccb5f050?q=80",
+    src: collection_img,
     alt: "The Eternity Collection",
   },
 };

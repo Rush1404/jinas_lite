@@ -3,6 +3,8 @@
 // Word-by-word reveal on the title, slow zoom on the photo, floating product tag.
 // ────────────────────────────────────────────────────────────────────────────
 
+import hero_img from "../../../public/hero.jpg";
+
 export interface HeroConfig {
   kicker: string;
   /** The title rendered as words wrapped in <span class="word"> for per-word reveal.

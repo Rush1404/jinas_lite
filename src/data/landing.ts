@@ -9,6 +9,11 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { routes } from "../utils/router";
+import ring from "../../public/ring.jpg";
+import earrings from "../../public/earrings.jpg";
+import bracelet from "../../public/bracelet.png";
+import pendant from "../../public/pendant.jpg";
+import man from "../../public/man.jpg";
 
 export interface LandingCategory {
   num: string;
@@ -24,31 +29,31 @@ export const landingCategories: LandingCategory[] = [
   {
     num: "№ 01",
     label: "Rings",
-    image: "https://images.unsplash.com/photo-1518370265276-f22b706aeac8?q=80",
+    image: ring,
     href: routes.category("RING"),
   },
   {
     num: "№ 02",
     label: "Earrings",
-    image: "https://images.unsplash.com/photo-1693213085235-ea6deadf8cee?q=80",
+    image: earrings,
     href: routes.category("EARRING"),
   },
   {
     num: "№ 03",
     label: "Bracelets",
-    image: "https://images.unsplash.com/photo-1691991054594-c64b364a9fab?q=80",
+    image: bracelet,
     href: routes.category("LOOSE_BRACELET"),
   },
   {
     num: "№ 04",
     label: "Pendants",
-    image: "https://images.unsplash.com/photo-1724937721228-f7bf3df2a4d8?q=80",
+    image: pendant,
     href: routes.category("PENDANT"),
   },
   {
     num: "№ 05",
     label: "Men",
-    image: "https://images.unsplash.com/photo-1611652022419-a9419f74343d?w=1200&q=80",
+    image: man,
     href: routes.gender("MEN"),
   },
 ];
